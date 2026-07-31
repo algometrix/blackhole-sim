@@ -2,7 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover so the render reaches under a notch; the interface
+         is kept clear of it with env(safe-area-inset-*) below. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="An interactive black hole visualizer: real Schwarzschild photon geodesics ray-traced per pixel on the GPU, in your browser."
+    />
     <title>Black Hole Visualizer</title>
     <style>
       html,
@@ -11,6 +22,11 @@
         height: 100%;
         overflow: hidden;
         background: #000;
+        /* A drag on the canvas is a camera move, never a page scroll or a
+           pinch zoom. Without this the browser eats the gesture first. */
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-text-size-adjust: 100%;
       }
       #app {
         position: fixed;
@@ -20,18 +36,19 @@
         display: block;
         width: 100%;
         height: 100%;
+        touch-action: none;
       }
       #hud {
         position: fixed;
-        left: 12px;
-        bottom: 12px;
+        left: calc(12px + env(safe-area-inset-left));
+        bottom: calc(12px + env(safe-area-inset-bottom));
         color: #9fd8e8;
         font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
         text-shadow: 0 0 4px #000;
         pointer-events: none;
         white-space: pre;
       }
-      /* Cinematic mode (H): fade the chrome, leave the render untouched. */
+      /* Cinematic mode: fade the chrome, leave the render untouched. */
       #hud,
       .lil-gui {
         transition: opacity 260ms ease;
@@ -44,14 +61,16 @@
       #toast {
         position: fixed;
         left: 50%;
-        bottom: 44px;
+        bottom: calc(44px + env(safe-area-inset-bottom));
         transform: translateX(-50%);
+        max-width: min(90vw, 420px);
+        text-align: center;
         padding: 8px 16px;
         border-radius: 999px;
         background: rgba(10, 12, 22, 0.55);
         border: 1px solid rgba(159, 216, 232, 0.18);
         color: #cfe8f2;
-        font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
         letter-spacing: 0.04em;
         opacity: 0;
         transition: opacity 400ms ease;
@@ -61,12 +80,128 @@
       #toast.visible {
         opacity: 1;
       }
+
+      /* The interface toggle. A phone has no H key, so the shortcut needs a
+         button; it is the one control that stays visible in cinematic mode. */
+      #chrome-toggle {
+        position: fixed;
+        right: calc(10px + env(safe-area-inset-right));
+        bottom: calc(10px + env(safe-area-inset-bottom));
+        z-index: 10;
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        border: 1px solid rgba(159, 216, 232, 0.25);
+        background: rgba(10, 12, 22, 0.6);
+        backdrop-filter: blur(6px);
+        color: #cfe8f2;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #chrome-toggle:active {
+        background: rgba(30, 36, 54, 0.75);
+      }
+      #chrome-toggle .icon-show {
+        display: none;
+      }
+      body.cinematic #chrome-toggle .icon-hide {
+        display: none;
+      }
+      body.cinematic #chrome-toggle .icon-show {
+        display: block;
+      }
+      /* The one control that must survive cinematic mode: with no keyboard,
+         it is the only way back. */
+      body.cinematic #chrome-toggle {
+        opacity: 0.55;
+      }
+      body.touch-ui #chrome-toggle {
+        display: flex;
+        /* Top right: the panel owns the bottom of a phone screen, and a
+           button hidden behind it is a button that does not exist. */
+        top: calc(10px + env(safe-area-inset-top));
+        bottom: auto;
+      }
+
+      /* Phone layout. The panel is a sheet along the bottom edge that can be
+         scrolled, rather than a 245px column covering the middle of the
+         render, and its rows are tall enough to hit with a thumb. */
+      body.touch-ui .lil-gui.lil-root {
+        --width: 100vw;
+        width: 100vw;
+        --widget-height: 28px;
+        --font-size: 14px;
+        --input-font-size: 15px;
+        --padding: 8px;
+        --spacing: 6px;
+        right: auto;
+        left: 0;
+        top: auto;
+        bottom: 0;
+        max-height: 62vh;
+        border-radius: 12px 12px 0 0;
+        padding-bottom: env(safe-area-inset-bottom);
+        box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.55);
+      }
+      body.touch-ui .lil-gui.lil-root > .lil-children {
+        max-height: calc(62vh - 44px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+      }
+      body.touch-ui .lil-gui .lil-title {
+        height: 40px;
+        line-height: 40px;
+        font-size: 15px;
+      }
+      body.touch-ui .lil-gui button,
+      body.touch-ui .lil-gui .lil-controller {
+        min-height: 38px;
+      }
+      /* The readout moves to the top too, clear of both the sheet and the
+         button. */
+      body.touch-ui #hud {
+        top: calc(14px + env(safe-area-inset-top));
+        bottom: auto;
+        font-size: 11px;
+        max-width: calc(100vw - 100px);
+        white-space: pre-wrap;
+      }
+      body.touch-ui #toast {
+        bottom: auto;
+        top: calc(76px + env(safe-area-inset-top));
+      }
     </style>
   </head>
   <body>
     <div id="app"></div>
     <div id="hud"></div>
     <div id="toast"></div>
+    <!-- The button shows the action, not the state: an open eye while the
+         interface is hidden (tap to bring it back), a struck-through eye while
+         it is showing (tap to hide it). Inline SVG rather than an emoji, which
+         renders differently on every platform. -->
+    <button id="chrome-toggle" type="button" aria-label="Hide the interface">
+      <svg class="icon-hide" viewBox="0 0 24 24" width="24" height="24" fill="none"
+           stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+           aria-hidden="true">
+        <path d="M3 3l18 18"/>
+        <path d="M10.6 6.2A9.6 9.6 0 0 1 12 6c5 0 9 6 9 6a15 15 0 0 1-2.7 3.2"/>
+        <path d="M6.6 6.8A15 15 0 0 0 3 12s4 6 9 6a9.4 9.4 0 0 0 4.1-.9"/>
+        <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+      </svg>
+      <svg class="icon-show" viewBox="0 0 24 24" width="24" height="24" fill="none"
+           stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+           aria-hidden="true">
+        <path d="M3 12s4-6 9-6 9 6 9 6-4 6-9 6-9-6-9-6z"/>
+        <circle cx="12" cy="12" r="2.6"/>
+      </svg>
+    </button>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
