@@ -3,10 +3,12 @@
  * sim-seconds. Physics constants (horizon, ISCO, ...) live in
  * physics/constants.ts; these are the directable knobs layered on top.
  *
- * Two clocks tick in this file. BODY_TUNING and DEBRIS_TUNING run on the
+ * Three clocks tick in this file. BODY_TUNING and DEBRIS_TUNING run on the
  * compressed *disruption clock* (see BODY_TUNING.timeCompression), so a rate
  * of "per second" there is per disruption-second, roughly eight times faster
- * than the wall clock at the shipped default. Everything else (the disc, the
+ * than the wall clock at the shipped default. BINARY_TUNING runs on the
+ * *inspiral clock*, and BEACON_TUNING on the *beacon clock*, which is
+ * deliberately the slowest of the three. Everything else (the disc, the
  * camera, the audio) runs on the plain simulation clock.
  */
 
@@ -81,8 +83,6 @@ export const DEBRIS_TUNING = {
   /** Disc-plane settling spring (s^-2) and damping (s^-1). */
   planeSpring: 0.5,
   planeDamping: 1.0,
-  /** Radius where particles start being absorbed into the disc (ISCO). */
-  absorbRadius: 3.0,
   /**
    * How circular a particle's orbit must be before the disc takes it: inside
    * the ISCO its speed-squared must fall below this multiple of the local
@@ -92,7 +92,8 @@ export const DEBRIS_TUNING = {
   circularizedSpeedFactor: 1.3,
   /** Seconds over which an absorbed particle fades out. */
   absorbFadeTime: 1.5,
-  /** Hard-kill radius just outside the horizon. */
+  /** Hard-kill radius as a multiple of the outer horizon, which shrinks as
+   *  the hole spins up, so this must not be written in r_s. */
   killRadius: 1.05,
   /**
    * Hard-kill age in disruption-clock seconds. An orbit at 8 r_s takes ~200 of
@@ -128,6 +129,47 @@ export const DISC_TUNING = {
   boostMax: 2.0,
   /** A fully absorbed body credits about this much total boost. */
   boostPerBody: 1.0,
+};
+
+export const LIGHT_CURVE_TUNING = {
+  /**
+   * Recording stops once the boost falls below this fraction of the flare's
+   * own peak. Without a stop the ring fills with post-flare zeros and starts
+   * decimating the event itself to make room for them.
+   */
+  fadedFraction: 0.002,
+  /**
+   * Sampling period on the *disruption clock* (see the two-clocks note at the
+   * top of this file), so the recorded shape does not change when the
+   * Disruption speed slider does. Two disruption-seconds is fine enough to
+   * resolve the rise and coarse enough that a whole flare fits in the buffer.
+   */
+  sampleInterval: 2.0,
+  /**
+   * 512 samples at that interval is 1024 disruption-seconds, longer than
+   * DEBRIS_TUNING.maxAge, so a single flare plays out without ever having to
+   * decimate. The ring still halves itself if someone leaves one running.
+   */
+  maxSamples: 512,
+  /** Repaint period. The chart is a readout, not an animation. */
+  repaintMs: 100,
+  /** Decades of brightness shown below the peak. Three is where the noise
+   *  floor of the absorbed-particle count takes over. */
+  visibleDecades: 3,
+  /**
+   * The decay fit starts this many peak-times in, past the rise and the
+   * turnover, which are the shape of DISC_TUNING.boostDecayTau rather than of
+   * anything falling back. The fitted number describes the plotted curve and is
+   * not a measurement of the fallback index: at the shipped tuning it comes out
+   * near -7 and tracks tdeTimeCompression, for the reasons written out at the
+   * top of ui/lightCurve.ts.
+   */
+  fitStartFactor: 1.5,
+  /** Ignore samples below this fraction of the peak: down there the boost is
+   *  the exponential tail of the last few absorbed particles. */
+  fitFloorFraction: 0.02,
+  /** Fewer points than this is a slope through noise, so no number is shown. */
+  minFitSamples: 8,
 };
 
 export const PLACEMENT_TUNING = {
@@ -182,6 +224,44 @@ export const TDE_TUNING = {
   energySpread: 0.35,
   /** A remnant that makes it back out past this radius has escaped. */
   escapeRadius: 30,
+};
+
+export const BEACON_TUNING = {
+  /**
+   * Release radius floor for a click. Closer in than this and the probe is
+   * already inside the disc when it is let go, so the interesting part of the
+   * fall happens behind the glare.
+   */
+  rMin: 4.0,
+  /**
+   * Tilt of the drop line out of the disc plane, radians (~35 deg). A probe
+   * released inside the plane spends the fall behind the disc's inner glare;
+   * one released near the pole falls down the jet and through the wind cone,
+   * which opens to about 44 deg from the axis. This threads between them.
+   */
+  inclination: 0.61,
+  /**
+   * Drawn radius, r_s units. Art-directed: a real probe is a point and a point
+   * is a fraction of a pixel, so the sprite also carries a screen-space floor
+   * (see render/beaconPoint.ts). It is a legibility choice, not a size.
+   */
+  radius: 0.06,
+  /**
+   * Wall-clock compression of the distant observer's clock for the probe. The
+   * same trick the other two clocks use, and for the same reason: scaling the
+   * clock uniformly speeds up the fall and the exponential stall together, so
+   * the shape of the freeze is untouched. Slower than the disruption clock on
+   * purpose, because here the observer's clock is the quantity on show.
+   */
+  timeCompression: 3,
+  /** Emission scale, matched against the disc's own factor of 16. */
+  emission: 22.0,
+  /**
+   * Gap (r_s units) below which the image counts as frozen. Past this the
+   * probe moves by less than a thousandth of an r_s while its brightness has
+   * already fallen by nine decades, so nothing more is going to happen.
+   */
+  settledGap: 1e-3,
 };
 
 export const GRID_TUNING = {

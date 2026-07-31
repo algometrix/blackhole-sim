@@ -26,7 +26,8 @@ export type Rng = () => number;
 /** Ballistic particles are culled once they are clearly gone. */
 const BALLISTIC_CULL_RADIUS = 60;
 
-const DEFAULT_ENV: GravityEnv = { rs: 1, bh2: null };
+/** A still hole of unit size: the a = 0 ISCO and the a = 0 horizon. */
+const DEFAULT_ENV: GravityEnv = { rs: 1, discInnerRadius: 3.0, horizonRadius: 1.0, bh2: null };
 
 /** Scratch for the spawn loop, which must not allocate per particle. */
 const launchVelocity = { x: 0, y: 0, z: 0 };
@@ -210,8 +211,13 @@ export interface PoolStepResult {
  * the first `alive` entries stay packed.
  *
  * Managed particles get PW gravity, inspiral drag, disc-plane settling, an
- * absorption fade at the inner edge (absorbRadius * rs), and a hard kill at
- * killRadius * rs. Ballistic particles get gravity only and die far out
+ * absorption fade at the disc's inner edge, and a hard kill just outside the
+ * horizon. Both radii come from the env rather than from art constants times
+ * rs, because both move with the hole's spin: at a/M = 0.9 the horizon is at
+ * 0.66 r_s, and a kill radius of 1.05 r_s would sit outside an inner edge
+ * that has come in to 1.16 r_s, so debris would vanish before it could ever
+ * be absorbed and the disc feed would silently stop being credited.
+ * Ballistic particles get gravity only and die far out
  * (r > 60), at max age, or inside the capture radius, never absorbed.
  * Any particle that strays inside 1.05x the secondary hole's Schwarzschild
  * radius is swallowed by it: killed with no disc credit.
@@ -227,8 +233,8 @@ export function updatePool(
   const rs = env.rs;
   const bh2 = env.bh2;
   const bh2CaptureR = bh2 ? 1.05 * 2 * bh2.m : 0;
-  const absorbRadius = DEBRIS_TUNING.absorbRadius * rs;
-  const killRadius = DEBRIS_TUNING.killRadius * rs;
+  const absorbRadius = env.discInnerRadius;
+  const killRadius = DEBRIS_TUNING.killRadius * env.horizonRadius;
   const dragFactor = 1 - drag * dt;
   let absorbed = 0;
 

@@ -53,7 +53,7 @@ function disrupt(ticks: number): StreamShape {
   const world = createWorld();
   const rng = mulberry32(7);
   placeBody(world, 'star', new Vector3(14, 0, 0), 'realistic');
-  for (let i = 0; i < ticks; i++) stepWorld(world, DT, rng, 40, COMPRESSION);
+  for (let i = 0; i < ticks; i++) stepWorld(world, DT, { gw: 40, tde: COMPRESSION, beacon: 1 }, rng);
   return shapeOf(world);
 }
 

@@ -1,28 +1,48 @@
 /**
- * Click-to-place a planet, star, or secondary black hole: a translucent
- * ghost follows the cursor on the disc plane (clamped to the allowed ring),
- * click confirms, Esc or right-click cancels. Orbit controls are suspended
- * while placing. What happens on confirm is the caller's business (placeBody
- * vs placeBinary), delivered through the onPlace callback.
+ * Click-to-place a planet, star, secondary black hole, or infalling beacon: a
+ * translucent ghost follows the cursor on the disc plane (clamped to the
+ * allowed ring), click confirms, Esc or right-click cancels. Orbit controls
+ * are suspended while placing. What happens on confirm is the caller's
+ * business (placeBody vs placeBinary vs placeBeacon), delivered through the
+ * onPlace callback.
  */
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { BINARY_TUNING, BODY_TUNING, PLACEMENT_TUNING } from '../config';
+import { BEACON_TUNING, BINARY_TUNING, BODY_TUNING, PLACEMENT_TUNING } from '../config';
+import { releasePoint } from '../sim/beacon';
 import { clampPlacement } from '../sim/placement';
 
-/** What can be placed: the two disruptable bodies, or the secondary hole. */
-export type PlaceKind = 'planet' | 'star' | 'bh2';
+/**
+ * What can be placed: the two disruptable bodies, the secondary hole, or the
+ * probe that falls in and freezes.
+ */
+export type PlaceKind = 'planet' | 'star' | 'bh2' | 'beacon';
 
 interface KindLook {
   color: number;
   radius: number;
   rMin: number;
+  /**
+   * Where this kind actually appears, given a point on the disc plane. The
+   * beacon is released off the plane, so its ghost has to sit where the probe
+   * will be, and the geometry that decides that stays in sim/beacon.ts rather
+   * than leaking into this controller.
+   */
+  spawnPoint?: (flat: THREE.Vector3) => THREE.Vector3;
 }
 
 const KIND_LOOKS: Record<PlaceKind, KindLook> = {
   planet: { color: 0xb08a63, radius: BODY_TUNING.planetRadius, rMin: PLACEMENT_TUNING.rMin },
   star: { color: 0xffd9a0, radius: BODY_TUNING.starRadius, rMin: PLACEMENT_TUNING.rMin },
   bh2: { color: 0x5577aa, radius: BINARY_TUNING.massRatio, rMin: PLACEMENT_TUNING.bh2RMin },
+  beacon: {
+    color: 0x9fd8ff,
+    // Drawn much larger than the probe itself: the ghost is a target marker,
+    // and a 0.06 r_s ball is invisible to aim with.
+    radius: 0.35,
+    rMin: BEACON_TUNING.rMin,
+    spawnPoint: releasePoint,
+  },
 };
 
 function makeRing(radius: number, opacity: number): THREE.Mesh {
@@ -106,7 +126,9 @@ export class PlacementController {
     );
     this.raycaster.setFromCamera(ndc, this.camera);
     if (!this.raycaster.ray.intersectPlane(this.plane, this.hitPoint)) return false;
-    this.ghost.position.copy(clampPlacement(this.hitPoint, KIND_LOOKS[this.kind].rMin));
+    const look = KIND_LOOKS[this.kind];
+    const flat = clampPlacement(this.hitPoint, look.rMin);
+    this.ghost.position.copy(look.spawnPoint ? look.spawnPoint(flat) : flat);
     return true;
   }
 

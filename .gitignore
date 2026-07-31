@@ -3,3 +3,6 @@ dist/
 *.local
 .DS_Store
 .gstack/
+
+# Workflow agent worktrees, never part of the project
+.claude/worktrees/

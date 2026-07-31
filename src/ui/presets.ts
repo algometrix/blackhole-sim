@@ -35,8 +35,11 @@ export interface Preset {
       Settings,
       | 'tdeMode'
       | 'timeScale'
+      | 'spin'
       | 'gwTimeCompression'
       | 'tdeTimeCompression'
+      | 'beaconTimeCompression'
+      | 'beaconBrightness'
       | 'discEnabled'
       | 'discBrightness'
       | 'jetEnabled'
@@ -46,10 +49,15 @@ export interface Preset {
       | 'gridEnabled'
       | 'gridOpacity'
       | 'bloomStrength'
+      | 'cameraBoostEnabled'
+      | 'cameraBoostStrength'
     >
   > & { sky?: Partial<SkySettings> };
   body: ({ kind: BodyKind } & Placement) | null;
   binary: Placement | null;
+  /** Where to release the infalling probe. Its lift out of the plane is
+   *  sim/beacon.ts's business, so only the plane position is given here. */
+  beacon: Placement | null;
   camera: CameraPose;
   /** Start a camera flight once the scene is set. */
   tour?: TourKind;
@@ -67,6 +75,7 @@ export const PRESETS: readonly Preset[] = [
     look: { tdeMode: 'realistic', discEnabled: true, discBrightness: 1.0, jetEnabled: false, gridEnabled: false, timeScale: 1, bloomStrength: 1.1 },
     body: { kind: 'star', radius: 14, angle: 2.5 },
     binary: null,
+    beacon: null,
     camera: { distance: 27, elevation: 0.25, azimuth: 1.4 },
     cinematic: false,
   },
@@ -78,6 +87,7 @@ export const PRESETS: readonly Preset[] = [
     look: { tdeMode: 'cinematic', discEnabled: true, discBrightness: 0.8, jetEnabled: false, gridEnabled: false, timeScale: 1.4, bloomStrength: 1.0 },
     body: { kind: 'planet', radius: 11, angle: 0.4 },
     binary: null,
+    beacon: null,
     camera: { distance: 22, elevation: 0.30, azimuth: 1.9 },
     cinematic: false,
   },
@@ -89,6 +99,7 @@ export const PRESETS: readonly Preset[] = [
     look: { discEnabled: true, discBrightness: 0.55, jetEnabled: false, gridEnabled: true, gridOpacity: 0.5, gwTimeCompression: 40, timeScale: 1, bloomStrength: 1.0 },
     body: null,
     binary: { radius: 13, angle: 0.0 },
+    beacon: null,
     camera: { distance: 30, elevation: 0.5, azimuth: 0.9 },
     cinematic: false,
   },
@@ -100,6 +111,7 @@ export const PRESETS: readonly Preset[] = [
     look: { discEnabled: false, jetEnabled: false, gridEnabled: true, gridOpacity: 0.6, bloomStrength: 0.8 },
     body: null,
     binary: null,
+    beacon: null,
     camera: { distance: 34, elevation: 0.62, azimuth: 0.4 },
     cinematic: false,
   },
@@ -111,7 +123,38 @@ export const PRESETS: readonly Preset[] = [
     look: { discEnabled: true, discBrightness: 1.3, jetEnabled: true, jetStrength: 1.3, gridEnabled: false, bloomStrength: 1.2 },
     body: null,
     binary: null,
+    beacon: null,
     camera: { distance: 26, elevation: 0.12, azimuth: 2.2 },
+    cinematic: false,
+  },
+  {
+    id: 'kerr',
+    name: 'Spinning hole (Kerr)',
+    description:
+      'A near-extremal hole seen almost edge on. The shadow is visibly D shaped, the bright ring is dragged tight against the horizon on the approaching side, and the disc runs down to 0.97 rₛ, a third of the way in from the 3 rₛ a still hole allows.',
+    look: { spin: 0.95, discEnabled: true, discBrightness: 1.1, jetEnabled: false, gridEnabled: false, bloomStrength: 1.0 },
+    body: null,
+    binary: null,
+    beacon: null,
+    camera: { distance: 18, elevation: 0.09, azimuth: 1.7 },
+    cinematic: false,
+  },
+  {
+    id: 'frozen',
+    name: 'A probe frozen at the horizon',
+    description:
+      'A beacon dropped from rest. It reddens, dims and stalls just outside the shadow instead of crossing. That is what you see; on its own clock it crossed seconds later and felt nothing.',
+    // Disc dimmed and outflow off: the probe ends up on the shadow rim, where
+    // the inner disc and the photon ring are the brightest things in frame,
+    // and by then it is nine decades fainter than it started.
+    // spin 0 on purpose: the probe integrates a Schwarzschild radial geodesic
+    // anchored to r_s, so demonstrating it against a dragged horizon would be
+    // showing one solution inside another spacetime.
+    look: { spin: 0, discEnabled: true, discBrightness: 0.5, jetEnabled: false, windEnabled: false, gridEnabled: false, timeScale: 1, beaconTimeCompression: 3, beaconBrightness: 3.5, bloomStrength: 1.3 },
+    body: null,
+    binary: null,
+    beacon: { radius: 7, angle: 0.9 },
+    camera: { distance: 16, elevation: 0.22, azimuth: 1.1 },
     cinematic: false,
   },
   {
@@ -122,6 +165,7 @@ export const PRESETS: readonly Preset[] = [
     look: { discEnabled: true, discBrightness: 1.0, jetEnabled: false, gridEnabled: false, bloomStrength: 1.25, sky: { nebulaIntensity: 1.2, deepSkyIntensity: 1.2 } },
     body: null,
     binary: null,
+    beacon: null,
     camera: { distance: 19, elevation: 0.16, azimuth: 1.2 },
     cinematic: true,
   },

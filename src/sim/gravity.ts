@@ -7,16 +7,26 @@
  * edge), so bodies and debris naturally destabilize and plunge where the
  * disc ends. rs defaults to 1 (the initial primary), and grows after a
  * binary merger.
+ *
+ * Honesty note: matter stays Paczynski-Wiita even when the hole spins. Only
+ * the boundaries move with the spin, through `discInnerRadius` and
+ * `horizonRadius` below, which are handed in rather than derived here.
+ * docs/THEORY.md says so in the cheat table.
  */
 import { Vector3 } from 'three';
 
 /**
- * Gravity sources seen by bodies and debris: the primary's Schwarzschild
- * radius and, while a binary inspiral is running, the secondary hole
- * (Newtonian point mass m at pos).
+ * Gravity sources and boundaries seen by bodies and debris: the primary's
+ * Schwarzschild radius, the two radii that move with its spin, and, while a
+ * binary inspiral is running, the secondary hole (Newtonian point mass m at
+ * pos).
  */
 export interface GravityEnv {
   rs: number;
+  /** Where debris is taken into the disc: the prograde ISCO, world units. */
+  discInnerRadius: number;
+  /** Outer horizon r+ of the primary, world units. */
+  horizonRadius: number;
   bh2: { pos: Vector3; m: number } | null;
 }
 

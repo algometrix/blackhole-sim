@@ -6,24 +6,50 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio/engine';
 import { AimingController } from './interact/aiming';
-import { DISC_OUTER, R_ISCO } from './physics/constants';
+import { BEACON_TUNING } from './config';
+import { DISC_OUTER } from './physics/constants';
 import type { GravityCenter } from './physics/geodesic';
+import {
+  circularPhotonOrbitRadius,
+  horizonRadius,
+  innermostStableCircularOrbit,
+} from './physics/kerr';
+import { lorentzGamma } from './physics/relativity';
+import { BeaconPoint, type BeaconState } from './render/beaconPoint';
 import { BlackHolePass, type PlanetState } from './render/blackHolePass';
 import { CameraRig } from './render/cameraRig';
 import { CameraTour } from './render/cameraTour';
 import { DebrisPoints } from './render/debrisPoints';
-import { PhotonPathManager } from './render/photonPaths';
+import { PhotonPathManager, type LensingState } from './render/photonPaths';
 import { RenderPipeline, type AccumMode } from './render/pipeline';
 import { SpacetimeGrid } from './render/spacetimeGrid';
 import { Starfield } from './render/starfield';
 import { defaultSettings } from './settings';
+import {
+  imagePosition,
+  observeBeacon,
+  releasePoint,
+  type BeaconObservables,
+} from './sim/beacon';
 import { displayRs, orbitalOmegaWall } from './sim/binary';
 import { bodyScale } from './sim/body';
 import { nextWaveState, restingWave } from './sim/gravitationalWave';
-import { clearBody, createWorld, placeBinary, placeBody, resetScene, stepWorld } from './sim/world';
+import {
+  clearBeacon,
+  clearBody,
+  createWorld,
+  placeBeacon,
+  placeBinary,
+  placeBody,
+  resetScene,
+  setPrimarySpin,
+  stepWorld,
+} from './sim/world';
 import type { Body } from './sim/types';
 import { CinematicMode, isTypingIntoControl } from './ui/chrome';
 import { touchRenderBudget, usesTouchUi } from './ui/device';
+import { createFlareCurve, recordFeeding, resetFlare, startFlare } from './ui/lightCurve';
+import { LightCurveChart } from './ui/lightCurveChart';
 import { buildPanel } from './ui/panel';
 import type { Preset } from './ui/presets';
 import { PlacementController } from './ui/placement';
@@ -59,6 +85,7 @@ const app = requireElement('app');
 const hud = requireElement('hud');
 const toast = requireElement('toast');
 const chromeToggle = requireElement('chrome-toggle');
+const lightCurveContainer = requireElement('light-curve');
 
 // A finger-driven device gets the touch layout and a smaller render budget,
 // phone or tablet alike. Decided once at boot: a device does not grow a mouse
@@ -93,25 +120,38 @@ const audio = new AudioEngine();
 const debrisPoints = new DebrisPoints(world.debris);
 pipeline.overlayScene.add(debrisPoints.points);
 
+const beaconPoint = new BeaconPoint();
+pipeline.overlayScene.add(beaconPoint.points);
+
 const spacetimeGrid = new SpacetimeGrid();
 pipeline.overlayScene.add(spacetimeGrid.lines);
+
+// The light curve records one disruption at a time and repaints itself off the
+// frame loop; the loop only ever feeds it samples. Constructed without a
+// binding because it lives as long as the page does.
+const flareCurve = createFlareCurve();
+new LightCurveChart(lightCurveContainer, () =>
+  settings.lightCurveEnabled
+    ? { curve: flareCurve, showReference: settings.lightCurveFallbackReference }
+    : null,
+);
 
 /** Current effective primary r_s (animated during merger ringdown). */
 function currentRs(): number {
   return displayRs(world.binary, world.primaryRs);
 }
 
-/** Lensing centers for CPU photon paths, mirroring the shader's state. */
-function gravityCenters(): readonly GravityCenter[] {
+/** The spacetime CPU photon paths integrate in, mirroring the shader's state. */
+function lensingState(): LensingState {
   const centers: GravityCenter[] = [{ x: 0, y: 0, z: 0, rs: currentRs() }];
   const binary = world.binary;
   if (binary?.phase === 'inspiral') {
     centers.push({ x: binary.pos.x, y: binary.pos.y, z: binary.pos.z, rs: binary.rs2 });
   }
-  return centers;
+  return { centers, spin: world.spin };
 }
 
-const photonPaths = new PhotonPathManager(gravityCenters);
+const photonPaths = new PhotonPathManager(lensingState);
 photonPaths.setVisible(settings.photonsEnabled);
 pipeline.overlayScene.add(photonPaths.group);
 
@@ -129,8 +169,20 @@ const placement = new PlacementController(
   pipeline.overlayScene,
   rig.controls,
   (kind, pos) => {
-    if (kind === 'bh2') placeBinary(world, pos);
-    else placeBody(world, kind, pos, settings.tdeMode);
+    // `pos` already carries whatever lift the kind asked for, so the beacon
+    // arrives at its release point and not at the click on the plane.
+    if (kind === 'bh2') {
+      placeBinary(world, pos);
+      return;
+    }
+    if (kind === 'beacon') {
+      placeBeacon(world, pos);
+      return;
+    }
+    placeBody(world, kind, pos, settings.tdeMode);
+    // A new body starts a new flare. Sharing one time axis across two
+    // disruptions would put an origin on the chart that neither curve has.
+    resetFlare(flareCurve);
   },
 );
 let aimInfo = '';
@@ -175,6 +227,7 @@ function applyPreset(preset: Preset): void {
   endTour();
   placement.cancel();
   resetScene(world);
+  resetFlare(flareCurve);
   wave = restingWave();
 
   const { sky, ...look } = preset.look;
@@ -194,9 +247,17 @@ function applyPreset(preset: Preset): void {
     presetPos.set(radius * Math.cos(angle), 0, radius * Math.sin(angle));
     placeBinary(world, presetPos);
   }
+  if (preset.beacon) {
+    const { radius, angle } = preset.beacon;
+    presetPos.set(radius * Math.cos(angle), 0, radius * Math.sin(angle));
+    placeBeacon(world, releasePoint(presetPos));
+  }
 
   rig.moveTo(preset.camera);
   photonPaths.setVisible(settings.photonsEnabled);
+  // A preset can change the spacetime itself, so a converged still frame from
+  // the previous scene is no longer a picture of anything.
+  pipeline.resetAccumulation();
   panel.refreshDisplays();
   if (preset.cinematic) cinematic.hide();
   else cinematic.show();
@@ -213,7 +274,9 @@ const panel = buildPanel(
     placePlanet: () => placement.enter('planet'),
     placeStar: () => placement.enter('star'),
     placeBlackHole: () => placement.enter('bh2'),
+    placeBeacon: () => placement.enter('beacon'),
     clearBody: () => clearBody(world),
+    clearBeacon: () => clearBeacon(world),
     clearPaths: () => photonPaths.clear(),
     onPhotonsToggled: (enabled) => {
       photonPaths.setVisible(enabled);
@@ -325,6 +388,79 @@ function syncPlanet(body: Body | null): void {
   bhPass.setPlanet(planetState);
 }
 
+// --- spin, and the accumulation it invalidates ---
+//
+// Changing the spin changes the spacetime, so a converged progressive frame is
+// a picture of a different universe and has to be thrown away, exactly as a
+// sky re-bake does. The same goes for the image-order overlay: in 'progressive'
+// mode the raymarch is skipped once converged, so a paused user toggling it
+// would otherwise see nothing happen at all.
+let appliedSpin = 0;
+let appliedImageOrderTint = 0;
+let spinWasAvailable = true;
+
+function syncSpin(): void {
+  const available = world.binary === null;
+  if (available !== spinWasAvailable) {
+    spinWasAvailable = available;
+    if (available) panel.enableSpin();
+    else panel.disableSpin();
+    if (!available && settings.spin > 0) {
+      settings.spin = 0;
+      panel.refreshDisplays();
+      showTransientNote('spin is modelled for a single hole, so it was set to 0');
+    }
+  }
+  const spin = setPrimarySpin(world, settings.spin);
+  if (spin !== appliedSpin) {
+    appliedSpin = spin;
+    pipeline.resetAccumulation();
+  }
+}
+
+function syncImageOrderTint(): void {
+  const tint = settings.imageOrderTintEnabled ? settings.imageOrderTintStrength : 0;
+  bhPass.setImageOrderTint(tint);
+  if (tint === appliedImageOrderTint) return;
+  appliedImageOrderTint = tint;
+  pipeline.resetAccumulation();
+}
+
+// --- infalling beacon sync (scratch object, no per-frame allocation) ---
+/** Scratch for the hole-to-camera direction; never allocated per frame. */
+const toCameraDirection = new THREE.Vector3();
+
+const beaconState: BeaconState = {
+  pos: new THREE.Vector3(),
+  radius: BEACON_TUNING.radius,
+  redshift: 1,
+  brightness: 1,
+};
+
+/**
+ * What a distant observer measures about the probe right now, recomputed once
+ * per frame and shared by the renderer and the readout. Null when there is no
+ * probe in the scene.
+ */
+let beaconView: BeaconObservables | null = null;
+
+function syncBeacon(view: BeaconObservables | null, viewportHeight: number): void {
+  const beacon = world.beacon;
+  if (!beacon || !view) {
+    beaconPoint.hide();
+    return;
+  }
+  // Drawn at the apparent radius, not the coordinate radius: near the horizon
+  // the image piles up on the photon ring instead of sinking into the shadow.
+  // The radius is an impact parameter, so it is applied in the sky plane.
+  toCameraDirection.copy(rig.camera.position).normalize();
+  imagePosition(beacon.direction, toCameraDirection, view.apparentRadius, beaconState.pos);
+  beaconState.radius = BEACON_TUNING.radius * beacon.horizonRs;
+  beaconState.redshift = view.redshift;
+  beaconState.brightness = BEACON_TUNING.emission * settings.beaconBrightness;
+  beaconPoint.setBeacon(beaconState, rig.camera, viewportHeight);
+}
+
 // --- auto-degrade on sustained slow frames ---
 const frameTimes: number[] = [];
 let lastDegradeCheck = 0;
@@ -355,10 +491,28 @@ function showTransientNote(text: string): void {
   transientUntil = performance.now() + NOTE_VISIBLE_MS;
 }
 
+/**
+ * Compact number for the readout. The beacon's quantities span thirty decades
+ * on the way down, so a fixed number of decimal places is useless for them.
+ */
+function readable(value: number): string {
+  return value >= 0.01 ? value.toFixed(2) : value.toExponential(1);
+}
+
 function updateHud(now: number, fps: number): void {
   if (cinematic.isActive || now - lastHudUpdate < 250) return;
   lastHudUpdate = now;
   const lines = [`${fps.toFixed(0)} fps · ${settings.quality}`];
+  if (world.spin > 0) {
+    // Derived radii belong in the readout, which is where this app already
+    // puts live numbers, rather than in the panel next to the slider.
+    lines.push(
+      `spin a/M ${world.spin.toFixed(2)} · horizon ${horizonRadius(world.spin).toFixed(2)} rₛ · ` +
+        `ISCO ${innermostStableCircularOrbit(world.spin, 'prograde').toFixed(2)} rₛ · ` +
+        `photon ring ${circularPhotonOrbitRadius(world.spin, 'prograde').toFixed(2)} / ` +
+        `${circularPhotonOrbitRadius(world.spin, 'retrograde').toFixed(2)} rₛ (prograde / retrograde)`,
+    );
+  }
   const binary = world.binary;
   if (binary?.phase === 'inspiral') {
     const orbitsPerSec = orbitalOmegaWall(binary, world.primaryRs, settings.gwTimeCompression) /
@@ -376,16 +530,41 @@ function updateHud(now: number, fps: number): void {
         .toFixed(1)} · mass=${(world.body.mass * 100).toFixed(0)}%`,
     );
   }
+  if (beaconView) {
+    const view = beaconView;
+    lines.push(
+      `beacon (${view.settled ? 'frozen' : 'falling'}): r − rₛ = ${readable(view.horizonGap)}` +
+        ` · redshift ×${readable(view.redshift)} · your clock ${view.coordinateTime.toFixed(0)} rₛ/c`,
+    );
+    lines.push(
+      `  its own clock ${view.probeProperTime.toFixed(1)} of` +
+        ` ${view.probeProperTimeAtHorizon.toFixed(1)} rₛ/c to the horizon`,
+    );
+  }
   if (world.discBoost > 0.01) lines.push(`disc feed +${(world.discBoost * 100).toFixed(0)}%`);
-  if (tour.activeKind) lines.push(`camera flight: ${tour.activeKind} · Esc to stop`);
-  else if (placement.active) lines.push('click the plane to place · right-click / Esc cancels');
-  else if (settings.photonsEnabled) lines.push('click to launch photons');
+  if (tour.activeKind) {
+    const speed = cameraBeta.length();
+    const motion =
+      speed > 0.005 ? ` · ${speed.toFixed(2)} c · γ ${lorentzGamma(speed).toFixed(2)}` : '';
+    lines.push(`camera flight: ${tour.activeKind}${motion} · Esc to stop`);
+  } else if (placement.active) {
+    lines.push('click the plane to place · right-click / Esc cancels');
+  } else if (settings.photonsEnabled) {
+    lines.push('click to launch photons');
+  }
+  if (settings.imageOrderTintEnabled) {
+    lines.push('image order: blue direct · amber one half turn · magenta photon ring');
+  }
   if (aimInfo) lines.push(aimInfo);
   if (now < transientUntil) lines.push(transientNote);
   hud.textContent = lines.join('\n');
 }
 
 // --- main loop ---
+/** Scratch for the camera velocity pushed to the shader; never allocated per frame. */
+const cameraBeta = new THREE.Vector3();
+/** The three compressed clocks, refilled from the sliders each tick. */
+const clocks = { gw: 0, tde: 0, beacon: 0 };
 let last = performance.now();
 let acc = 0;
 let smoothedFps = 60;
@@ -406,17 +585,32 @@ function frame(now: number): void {
   let steps = 0;
   let mergerNow = false;
   let shredNow = false;
+  clocks.gw = settings.gwTimeCompression;
+  clocks.tde = settings.tdeTimeCompression;
+  clocks.beacon = settings.beaconTimeCompression;
   while (acc >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
-    const events = stepWorld(
-      world,
-      FIXED_DT,
-      Math.random,
-      settings.gwTimeCompression,
-      settings.tdeTimeCompression,
-    );
+    const events = stepWorld(world, FIXED_DT, clocks, Math.random);
     mergerNow ||= events.mergerNow;
     shredNow ||= events.shredNow;
     if (events.bodyEscaped) showTransientNote('remnant escaped with the mass it kept');
+    if (events.beaconLost) showTransientNote('the merger moved the horizon, so the beacon was removed');
+    // The light curve's clock starts when the star comes apart and runs on the
+    // disruption clock, so its time axis is unaffected by the speed sliders and
+    // freezes when the sim is paused. The plotted curve still moves with
+    // tdeTimeCompression, because the disc's feeding glow decays on the
+    // simulation clock; that is why the compression at disruption is recorded
+    // and printed. The body can already be gone on the tick it shredded, hence
+    // the fallback to the current mode.
+    if (events.shredNow) {
+      startFlare(flareCurve, {
+        mode: world.body?.mode ?? settings.tdeMode,
+        timeCompression: settings.tdeTimeCompression,
+      });
+    }
+    recordFeeding(flareCurve, {
+      disruptionDt: FIXED_DT * settings.tdeTimeCompression,
+      boost: world.discBoost,
+    });
     // The wave rides the simulation clock, so it freezes when the sim does.
     wave = nextWaveState(
       wave,
@@ -435,7 +629,8 @@ function frame(now: number): void {
 
   const rs = currentRs();
   syncPlanet(world.body);
-  bhPass.setPrimaryRs(rs);
+  syncSpin();
+  bhPass.setPrimary({ rs, spin: world.spin });
   bhPass.setSecondary(
     world.binary?.phase === 'inspiral' ? { pos: world.binary.pos, rs: world.binary.rs2 } : null,
   );
@@ -443,17 +638,21 @@ function frame(now: number): void {
   // The outflow exists only while the hole is being force-fed, so it rises
   // with the feeding boost and dies with it, no separate control needed.
   bhPass.setWindStrength(settings.windEnabled ? world.discBoost * settings.windStrength : 0);
+  syncImageOrderTint();
   spacetimeGrid.setVisible(settings.gridEnabled);
   spacetimeGrid.setOpacity(settings.gridOpacity);
   spacetimeGrid.setPrimaryRs(rs);
   spacetimeGrid.setWave(wave);
   bhPass.setDisc({
-    inner: R_ISCO * rs,
+    inner: innermostStableCircularOrbit(world.spin, 'prograde') * rs,
     outer: DISC_OUTER * rs,
     brightness: settings.discEnabled ? settings.discBrightness * (1 + world.discBoost) : 0,
   });
   renderer.getDrawingBufferSize(drawSize);
   debrisPoints.update(world.debris, world.debrisBrightness, rig.camera, drawSize.y);
+  // Measured once, then shared by the sprite and the (throttled) readout.
+  beaconView = world.beacon ? observeBeacon(world.beacon) : null;
+  syncBeacon(beaconView, drawSize.y);
 
   audio.update(frameDt, {
     discBoost: world.discBoost,
@@ -476,6 +675,17 @@ function frame(now: number): void {
     idle = rig.update();
   }
 
+  // Relativistic optics of the moving camera. Mouse orbiting repositions the
+  // camera rather than flying it, so the tour's beta is the zero vector there
+  // and the whole effect is off by construction, not by a threshold.
+  cameraBeta
+    .copy(tour.beta)
+    .multiplyScalar(settings.cameraBoostEnabled ? settings.cameraBoostStrength : 0);
+  bhPass.setCameraBeta(cameraBeta);
+
+  // Only raymarched content counts. The beacon is drawn in the overlay pass,
+  // which is re-rendered every frame even while a converged raymarch is held,
+  // so a falling probe does not have to spoil idle accumulation.
   const bhContentMoving = world.body !== null || world.binary !== null;
   const accumMode = chooseAccumMode(idle, settings.paused, bhContentMoving);
   pipeline.render(world.time, {
