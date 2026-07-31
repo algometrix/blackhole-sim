@@ -50,6 +50,8 @@ export class BlackHolePass {
       uDiscInner: { value: 3 },
       uDiscOuter: { value: 9 },
       uDiscBrightness: { value: 1 },
+      uJetStrength: { value: 0 },
+      uWindStrength: { value: 0 },
       uPlanetActive: { value: 0 },
       uPlanetPos: { value: new THREE.Vector3() },
       uPlanetRadii: { value: new THREE.Vector3(1, 1, 1) },
@@ -97,6 +99,16 @@ export class BlackHolePass {
     this.uniforms.uDiscBrightness!.value = disc.brightness;
   }
 
+  /** Polar jet brightness; 0 removes the jet from the march entirely. */
+  setJetStrength(strength: number): void {
+    this.uniforms.uJetStrength!.value = strength;
+  }
+
+  /** Super-Eddington outflow; 0 removes it from the march entirely. */
+  setWindStrength(strength: number): void {
+    this.uniforms.uWindStrength!.value = strength;
+  }
+
   setPlanet(planet: PlanetState | null): void {
     if (!planet) {
       this.uniforms.uPlanetActive!.value = 0;
@@ -115,7 +127,7 @@ export class BlackHolePass {
     camera.updateMatrixWorld();
     const e = camera.matrixWorld.elements;
     (this.uniforms.uCamPos!.value as THREE.Vector3).setFromMatrixPosition(camera.matrixWorld);
-    // Columns: camera right, up, back — the shader marches along -back.
+    // Columns: camera right, up, back, the shader marches along -back.
     (this.uniforms.uCamBasis!.value as THREE.Matrix3).set(
       e[0]!, e[4]!, e[8]!,
       e[1]!, e[5]!, e[9]!,

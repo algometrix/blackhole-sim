@@ -8,6 +8,15 @@ import { CAMERA_TUNING } from '../config';
 
 const IDLE_AFTER_MS = 250;
 
+/** Where the camera stands, in the orbit terms the rig actually thinks in. */
+export interface CameraPose {
+  distance: number;
+  /** Elevation above the disc plane, radians. */
+  elevation: number;
+  /** Azimuth around the hole, radians. */
+  azimuth: number;
+}
+
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
   readonly controls: OrbitControls;
@@ -36,6 +45,20 @@ export class CameraRig {
   update(): boolean {
     this.controls.update();
     return performance.now() - this.lastMoveAt > IDLE_AFTER_MS;
+  }
+
+  /** Jump to a pose expressed in orbit terms (used by the scene presets). */
+  moveTo(pose: CameraPose): void {
+    const { distance, elevation, azimuth } = pose;
+    const horizontal = distance * Math.cos(elevation);
+    this.camera.position.set(
+      horizontal * Math.cos(azimuth),
+      distance * Math.sin(elevation),
+      horizontal * Math.sin(azimuth),
+    );
+    this.controls.target.set(0, 0, 0);
+    this.controls.enabled = true;
+    this.controls.update();
   }
 
   setAspect(aspect: number): void {

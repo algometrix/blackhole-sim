@@ -1,5 +1,5 @@
 /**
- * Pass 3: dual-filter Kawase bloom — threshold prefilter, a downsample chain,
+ * Pass 3: dual-filter Kawase bloom, threshold prefilter, a downsample chain,
  * then tent upsampling that accumulates each level back up.
  */
 import * as THREE from 'three';
@@ -8,7 +8,13 @@ import prefilterFrag from './shaders/prefilter.frag';
 import downFrag from './shaders/bloomDown.frag';
 import upFrag from './shaders/bloomUp.frag';
 
-const LEVELS = 4;
+/**
+ * Six levels, not four. The dual-filter kernel is a diamond; with only four
+ * levels its widest tail is still bright enough after tonemapping that the
+ * diamond's isoline shows up as straight-edged polygons wherever a very bright
+ * region borders a black one, most visibly around the shadow itself.
+ */
+const LEVELS = 6;
 
 function makeTarget(width: number, height: number): THREE.WebGLRenderTarget {
   return new THREE.WebGLRenderTarget(Math.max(width, 1), Math.max(height, 1), {

@@ -2,7 +2,7 @@
  * Procedural audio: an artistic sonification of the black hole, synthesized
  * entirely with the Web Audio API (no samples).
  *
- * Honesty note — what real black holes "sound" like: the Perseus-cluster
+ * Honesty note, what real black holes "sound" like: the Perseus-cluster
  * black hole drives pressure waves through the cluster gas at a B-flat some
  * 57 octaves below middle C; NASA's sonification transposes it up into a
  * deep, slowly-breathing drone. LIGO's gravitational-wave detections land in
@@ -67,7 +67,7 @@ const NOISE_BUFFER_S = 2;
 const GATE_RAMP_S = 0.08;
 
 export interface AudioFrameState {
-  /** Accretion-disc feeding boost, 0..2 — drives the "matter rushing in" noise. */
+  /** Accretion-disc feeding boost, 0..2, drives the "matter rushing in" noise. */
   discBoost: number;
   /** GW inspiral state, or null when no secondary black hole is present. */
   binary: { separation: number; omegaWall: number } | null; // omegaWall = orbital angular velocity, wall-clock rad/s
@@ -264,7 +264,7 @@ export class AudioEngine {
       try {
         source.stop();
       } catch {
-        // Never started (shouldn't happen) — disconnect below still applies.
+        // Never started (shouldn't happen), disconnect below still applies.
       }
     }
     g.gate.disconnect();

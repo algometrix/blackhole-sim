@@ -1,6 +1,6 @@
 /**
  * GPU rendering of the sim's debris pool: one THREE.Points wrapping the
- * pool's Float32Arrays directly (zero copy) — each frame just flips
+ * pool's Float32Arrays directly (zero copy), each frame just flips
  * needsUpdate and sets drawRange to the live count.
  */
 import * as THREE from 'three';

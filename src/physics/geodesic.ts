@@ -8,7 +8,7 @@
  * equivalent to the Binet equation u'' = -u + (3/2) r_s u^2 but needing no
  * per-ray orbital-plane basis and having no singularity for radial rays.
  * With a second black hole present, the deflections of the two centers are
- * superposed (each with its own h about that center) — the standard
+ * superposed (each with its own h about that center), the standard
  * approximation, exact for one hole and qualitatively right for two.
  * The same equations, RK4 scheme, and step-size formula run in the fragment
  * shader, so paths drawn from these results land exactly on the features the
