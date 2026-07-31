@@ -31,11 +31,42 @@
         pointer-events: none;
         white-space: pre;
       }
+      /* Cinematic mode (H): fade the chrome, leave the render untouched. */
+      #hud,
+      .lil-gui {
+        transition: opacity 260ms ease;
+      }
+      body.cinematic #hud,
+      body.cinematic .lil-gui {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #toast {
+        position: fixed;
+        left: 50%;
+        bottom: 44px;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        border-radius: 999px;
+        background: rgba(10, 12, 22, 0.55);
+        border: 1px solid rgba(159, 216, 232, 0.18);
+        color: #cfe8f2;
+        font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.04em;
+        opacity: 0;
+        transition: opacity 400ms ease;
+        pointer-events: none;
+        backdrop-filter: blur(6px);
+      }
+      #toast.visible {
+        opacity: 1;
+      }
     </style>
   </head>
   <body>
     <div id="app"></div>
     <div id="hud"></div>
+    <div id="toast"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

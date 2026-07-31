@@ -14,13 +14,17 @@ import { CameraTour } from './render/cameraTour';
 import { DebrisPoints } from './render/debrisPoints';
 import { PhotonPathManager } from './render/photonPaths';
 import { RenderPipeline, type AccumMode } from './render/pipeline';
-import { generateStarCubemap } from './render/starfield';
+import { SpacetimeGrid } from './render/spacetimeGrid';
+import { Starfield } from './render/starfield';
 import { defaultSettings } from './settings';
 import { displayRs, orbitalOmegaWall } from './sim/binary';
 import { bodyScale } from './sim/body';
-import { clearBody, createWorld, placeBinary, placeBody, stepWorld } from './sim/world';
+import { nextWaveState, restingWave } from './sim/gravitationalWave';
+import { clearBody, createWorld, placeBinary, placeBody, resetScene, stepWorld } from './sim/world';
 import type { Body } from './sim/types';
+import { CinematicMode, isTypingIntoControl } from './ui/chrome';
 import { buildPanel } from './ui/panel';
+import type { Preset } from './ui/presets';
 import { PlacementController } from './ui/placement';
 
 const FIXED_DT = 1 / 60;
@@ -52,6 +56,7 @@ function requireElement(id: string): HTMLElement {
 
 const app = requireElement('app');
 const hud = requireElement('hud');
+const toast = requireElement('toast');
 
 const renderer = new THREE.WebGLRenderer({
   antialias: false,
@@ -67,15 +72,18 @@ app.appendChild(renderer.domElement);
 const settings = defaultSettings();
 const world = createWorld();
 
-const sky = generateStarCubemap(renderer, { faceSize: 1024 });
+const starfield = new Starfield(renderer, settings.sky);
 const rig = new CameraRig(window.innerWidth / window.innerHeight, renderer.domElement);
-const bhPass = new BlackHolePass(sky, settings.quality);
+const bhPass = new BlackHolePass(starfield.texture, settings.quality);
 const pipeline = new RenderPipeline(renderer, rig.camera, bhPass, settings.quality);
 const tour = new CameraTour();
 const audio = new AudioEngine();
 
 const debrisPoints = new DebrisPoints(world.debris);
 pipeline.overlayScene.add(debrisPoints.points);
+
+const spacetimeGrid = new SpacetimeGrid();
+pipeline.overlayScene.add(spacetimeGrid.lines);
 
 /** Current effective primary r_s (animated during merger ringdown). */
 function currentRs(): number {
@@ -95,6 +103,9 @@ function gravityCenters(): readonly GravityCenter[] {
 const photonPaths = new PhotonPathManager(gravityCenters);
 photonPaths.setVisible(settings.photonsEnabled);
 pipeline.overlayScene.add(photonPaths.group);
+
+/** Gravitational-wave state for the curvature grid; advanced on sim time. */
+let wave = restingWave();
 
 function endTour(): void {
   tour.cancel();
@@ -123,7 +134,58 @@ const aiming = new AimingController(
   },
 );
 
-const gui = buildPanel(
+const cinematic = new CinematicMode(document.body, toast);
+
+/** A re-bake invalidates the converged idle frame, so accumulation restarts. */
+function rebakeSky(): void {
+  starfield.bake(settings.sky);
+  pipeline.resetAccumulation();
+}
+
+const presetPos = new THREE.Vector3();
+
+/**
+ * Build a canned scene: clear whatever is there, place what the preset asks
+ * for, move the camera, force its look settings. Settings the preset does not
+ * mention keep their current values.
+ */
+function applyPreset(preset: Preset): void {
+  endTour();
+  placement.cancel();
+  resetScene(world);
+  wave = restingWave();
+
+  const { sky, ...look } = preset.look;
+  Object.assign(settings, look);
+  if (sky) {
+    Object.assign(settings.sky, sky);
+    rebakeSky();
+  }
+
+  if (preset.body) {
+    const { kind, radius, angle } = preset.body;
+    presetPos.set(radius * Math.cos(angle), 0, radius * Math.sin(angle));
+    placeBody(world, kind, presetPos, settings.tdeMode);
+  }
+  if (preset.binary) {
+    const { radius, angle } = preset.binary;
+    presetPos.set(radius * Math.cos(angle), 0, radius * Math.sin(angle));
+    placeBinary(world, presetPos);
+  }
+
+  rig.moveTo(preset.camera);
+  photonPaths.setVisible(settings.photonsEnabled);
+  panel.refreshDisplays();
+  if (preset.cinematic) cinematic.hide();
+  else cinematic.show();
+  if (preset.tour) {
+    rig.controls.enabled = false;
+    tour.start(preset.tour, rig.camera, currentRs());
+  }
+  showTransientNote(preset.name);
+}
+
+const panel = buildPanel(
   settings,
   {
     placePlanet: () => placement.enter('planet'),
@@ -147,6 +209,20 @@ const gui = buildPanel(
       audio.setEnabled(enabled);
     },
     onVolumeChange: (volume) => audio.setVolume(volume),
+    onSkyChange: rebakeSky,
+    newSky: () => {
+      settings.sky.seed = Math.random() * 1000;
+      rebakeSky();
+    },
+    toggleCinematic: () => cinematic.toggle(),
+    applyPreset,
+    refreshFromSettings: () => {
+      pipeline.setQuality(settings.quality);
+      photonPaths.setVisible(settings.photonsEnabled);
+      audio.setEnabled(settings.soundEnabled);
+      audio.setVolume(settings.volume);
+      rebakeSky();
+    },
   },
   new URLSearchParams(window.location.search).has('debug'),
 );
@@ -161,8 +237,22 @@ window.addEventListener(
   },
   { once: true },
 );
+// The whole keymap, in one place: Esc ends a camera flight, H hides the
+// interface, G toggles the curvature grid.
 window.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') endTour();
+  if (isTypingIntoControl(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+  switch (event.key.toLowerCase()) {
+    case 'escape':
+      endTour();
+      break;
+    case 'h':
+      cinematic.toggle();
+      break;
+    case 'g':
+      settings.gridEnabled = !settings.gridEnabled;
+      panel.refreshDisplays();
+      break;
+  }
 });
 
 const drawSize = new THREE.Vector2();
@@ -227,18 +317,25 @@ function maybeDegrade(now: number, frameMs: number): void {
   if (median <= 24 || settings.quality === 'low') return;
   settings.quality = settings.quality === 'high' ? 'medium' : 'low';
   pipeline.setQuality(settings.quality);
-  gui.controllersRecursive().forEach((c) => c.updateDisplay());
+  panel.refreshDisplays();
   degradeNote = `quality lowered to ${settings.quality} (slow frames)`;
   frameTimes.length = 0;
 }
 
 // --- HUD ---
+const NOTE_VISIBLE_MS = 4500;
 let lastHudUpdate = 0;
 let transientNote = '';
 let transientUntil = 0;
 
+/** A one-off line in the readout, e.g. "remnant escaped". */
+function showTransientNote(text: string): void {
+  transientNote = text;
+  transientUntil = performance.now() + NOTE_VISIBLE_MS;
+}
+
 function updateHud(now: number, fps: number): void {
-  if (now - lastHudUpdate < 250) return;
+  if (cinematic.isActive || now - lastHudUpdate < 250) return;
   lastHudUpdate = now;
   const lines = [`${fps.toFixed(0)} fps · ${settings.quality}`];
   const binary = world.binary;
@@ -249,7 +346,7 @@ function updateHud(now: number, fps: number): void {
       `inspiral: separation ${binary.a.toFixed(2)} rₛ · ${orbitsPerSec.toFixed(2)} orbits/s`,
     );
   } else if (binary?.phase === 'ringdown') {
-    lines.push('merged — ringdown');
+    lines.push('merged, ringdown');
   }
   if (world.body) {
     lines.push(
@@ -275,7 +372,13 @@ let smoothedFps = 60;
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
-  const frameDt = Math.min((now - last) / 1000, 0.1);
+  // Clamped at both ends. The ceiling is the usual "don't simulate a whole
+  // alt-tab in one tick" guard; the floor matters because the first frame's
+  // timestamp can predate `last`, a browser hands the callback the time the
+  // frame started, which on a slow GPU is before the startup sky bake
+  // finished. That negative dt used to drive the accumulator tens of seconds
+  // into debt, and the simulation stood still until it climbed back out.
+  const frameDt = Math.min(Math.max((now - last) / 1000, 0), 0.1);
   last = now;
   smoothedFps += (1 / Math.max(frameDt, 1e-4) - smoothedFps) * 0.05;
 
@@ -284,13 +387,24 @@ function frame(now: number): void {
   let mergerNow = false;
   let shredNow = false;
   while (acc >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
-    const events = stepWorld(world, FIXED_DT, Math.random, settings.gwTimeCompression);
+    const events = stepWorld(
+      world,
+      FIXED_DT,
+      Math.random,
+      settings.gwTimeCompression,
+      settings.tdeTimeCompression,
+    );
     mergerNow ||= events.mergerNow;
     shredNow ||= events.shredNow;
-    if (events.bodyEscaped) {
-      transientNote = 'remnant escaped with the mass it kept';
-      transientUntil = now + 5000;
-    }
+    if (events.bodyEscaped) showTransientNote('remnant escaped with the mass it kept');
+    // The wave rides the simulation clock, so it freezes when the sim does.
+    wave = nextWaveState(
+      wave,
+      world.binary,
+      world.primaryRs,
+      settings.gwTimeCompression,
+      FIXED_DT,
+    );
     acc -= FIXED_DT;
     steps++;
   }
@@ -305,6 +419,14 @@ function frame(now: number): void {
   bhPass.setSecondary(
     world.binary?.phase === 'inspiral' ? { pos: world.binary.pos, rs: world.binary.rs2 } : null,
   );
+  bhPass.setJetStrength(settings.jetEnabled ? settings.jetStrength : 0);
+  // The outflow exists only while the hole is being force-fed, so it rises
+  // with the feeding boost and dies with it, no separate control needed.
+  bhPass.setWindStrength(settings.windEnabled ? world.discBoost * settings.windStrength : 0);
+  spacetimeGrid.setVisible(settings.gridEnabled);
+  spacetimeGrid.setOpacity(settings.gridOpacity);
+  spacetimeGrid.setPrimaryRs(rs);
+  spacetimeGrid.setWave(wave);
   bhPass.setDisc({
     inner: R_ISCO * rs,
     outer: DISC_OUTER * rs,
