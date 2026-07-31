@@ -1,6 +1,6 @@
 /**
  * Simulation state types. The sim layer is pure TypeScript: it may use
- * Three's math classes (Vector3 — plain JS, Node-safe) but nothing that
+ * Three's math classes (Vector3, plain JS, Node-safe) but nothing that
  * touches a renderer, scene, or the DOM.
  */
 import { Vector3 } from 'three';
@@ -31,6 +31,13 @@ export interface Body {
   lossBase: number;
   /** Debris energy spread (bound/unbound split); 0 in cinematic mode. */
   energySpread: number;
+  /**
+   * Velocity drag per second. It is what drives the cinematic spiral, and it
+   * is exactly zero in realistic mode: a zero-energy parabolic plunge that
+   * bleeds velocity on the way in is no longer parabolic, and its pericenter
+   * collapses into the hole, taking the debris stream with it.
+   */
+  drag: number;
 }
 
 /** Secondary black hole on a gravitational-wave inspiral (see binary.ts). */

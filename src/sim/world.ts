@@ -2,13 +2,13 @@
  * The whole simulation API: create the world, advance it one fixed tick,
  * place or clear a body, place a secondary hole. Orchestrates the binary
  * inspiral, body integration, debris spawning, particle updates, and disc
- * feeding — all pure CPU math.
+ * feeding, all pure CPU math.
  */
 import { Vector3 } from 'three';
 import { BINARY_TUNING, BODY_TUNING, DEBRIS_TUNING, DISC_TUNING, TDE_TUNING } from '../config';
 import type { TdeMode } from '../settings';
 import { createBinary, stepBinary, stepRingdown } from './binary';
-import { stepBody } from './body';
+import { spillFraction, stepBody } from './body';
 import { createPool, spawnFromBody, updatePool, type Rng } from './debris';
 import { creditFeed, decayBoost } from './disc';
 import type { GravityEnv } from './gravity';
@@ -66,6 +66,7 @@ export function placeBody(
   let rShed: number;
   let lossBase: number;
   let energySpread: number;
+  let drag: number;
   let vel: Vector3;
   if (mode === 'realistic') {
     const rt = isStar ? TDE_TUNING.starTidalRadius : TDE_TUNING.planetTidalRadius;
@@ -73,12 +74,14 @@ export function placeBody(
     rShed = rt;
     lossBase = TDE_TUNING.massLossBase;
     energySpread = TDE_TUNING.energySpread;
+    drag = 0;
     vel = parabolicVelocity(pos, TDE_TUNING.pericenterFraction * rt, rs);
   } else {
     rTidal = BODY_TUNING.rTidal;
     rShed = BODY_TUNING.rShed;
     lossBase = BODY_TUNING.massLossBase;
     energySpread = 0;
+    drag = BODY_TUNING.drag;
     vel = initialVelocity(pos, rs);
   }
 
@@ -95,6 +98,7 @@ export function placeBody(
     rShed,
     lossBase,
     energySpread,
+    drag,
   };
   world.spawnAcc = 0;
   // Normalize feeding so one fully absorbed body credits ~boostPerBody:
@@ -111,6 +115,22 @@ export function clearBody(world: World): void {
 }
 
 /**
+ * Empty the scene: no body, no secondary, no debris, no leftover feeding.
+ * A ringdown in progress is settled first, so the primary keeps the mass it
+ * gained in the merger instead of snapping back to its pre-merger radius.
+ */
+export function resetScene(world: World): void {
+  if (world.binary?.phase === 'ringdown') world.primaryRs = world.binary.rsFinal;
+  world.body = null;
+  world.binary = null;
+  world.debris.alive = 0;
+  world.spawnAcc = 0;
+  world.discBoost = 0;
+  world.debrisBrightness = 1;
+  world.debrisHeatFloor = 0;
+}
+
+/**
  * Place (or replace) the secondary hole. If a ringdown is still playing,
  * settle it first so the new binary orbits the fully grown primary.
  */
@@ -122,11 +142,34 @@ export function placeBinary(world: World, requested: Vector3): void {
 }
 
 /** Advance the world by one fixed timestep `dt` (sim seconds). */
+/**
+ * Ceiling on a single body/debris integration step. The body and the debris
+ * are integrated numerically (semi-implicit Euler), so a compressed clock has
+ * to be walked in substeps, hand the integrator one 1-second jump and the
+ * trajectory itself starts to depend on the compression slider.
+ */
+const MAX_BODY_STEP = 0.1;
+
+/**
+ * One tick. Two clocks run inside it:
+ *
+ * - `gwCompression` for the binary inspiral. Exact: `stepBinary` advances
+ *   closed-form Peters and Kepler quantities, so only the clock changes.
+ * - `tdeCompression` for the body and its debris. A circular orbit at 12 r_s
+ *   takes ~370 time units, so at 1:1 a disruption unfolds over ten minutes and
+ *   the debris never completes a turn, the stream reads as a scattering of
+ *   dots instead of the wound spiral it is. Substepped to `MAX_BODY_STEP` so
+ *   the compressed trajectory matches the uncompressed one.
+ *
+ * The disc keeps the uncompressed clock: it is a background, and shearing it
+ * twenty times faster would turn it into a pinwheel.
+ */
 export function stepWorld(
   world: World,
   dt: number,
   rng: Rng = Math.random,
   gwCompression: number = BINARY_TUNING.timeCompression,
+  tdeCompression = 1,
 ): WorldEvents {
   const events: WorldEvents = { mergerNow: false, shredNow: false, bodyEscaped: false };
 
@@ -146,30 +189,45 @@ export function stepWorld(
         : null,
   };
 
-  const body = world.body;
-  if (body) {
-    const phaseBefore = body.phase;
-    const { consumedNow, escaped } = stepBody(body, dt, env);
-    events.shredNow = body.phase === 'shedding' && phaseBefore !== 'shedding';
-    const spawnOpts = { energySpread: body.energySpread, rs: world.primaryRs };
-    if (body.phase === 'shedding') {
-      world.spawnAcc += spawnRateFor(body.kind) * body.mass * dt;
-      const count = Math.floor(world.spawnAcc);
-      if (count > 0) {
-        world.spawnAcc -= count;
-        spawnFromBody(world.debris, body, count, world.debrisHeatFloor, rng, spawnOpts);
+  const bodyDt = dt * tdeCompression;
+  const substeps = Math.max(1, Math.ceil(bodyDt / MAX_BODY_STEP));
+  const subDt = bodyDt / substeps;
+  let absorbed = 0;
+  for (let step = 0; step < substeps; step++) {
+    const body = world.body;
+    if (body) {
+      const phaseBefore = body.phase;
+      const { consumedNow, escaped } = stepBody(body, subDt, env);
+      events.shredNow ||= body.phase === 'shedding' && phaseBefore !== 'shedding';
+      const spawnOpts = { energySpread: body.energySpread, rs: world.primaryRs };
+      // Particles follow the mass: the full rate while shedding, the ramped
+      // spill fraction while the body is only being stretched. (The spill also
+      // credits the disc, so a fed disc brightens slightly earlier than the
+      // one-body-one-boost normalisation assumes.)
+      const spill = body.phase === 'stretching' ? spillFraction(body.pos.length(), body) : 0;
+      const rateFraction = body.phase === 'shedding' ? 1 : spill;
+      if (rateFraction > 0) {
+        world.spawnAcc += spawnRateFor(body.kind) * body.mass * rateFraction * subDt;
+        const count = Math.floor(world.spawnAcc);
+        if (count > 0) {
+          // Debited whether or not the pool had room: the mass left the body
+          // either way, and a full pool simply means the oldest debris is
+          // still on screen.
+          world.spawnAcc -= count;
+          spawnFromBody(world.debris, body, count, world.debrisHeatFloor, rng, spawnOpts);
+        }
+      }
+      if (consumedNow) {
+        spawnFromBody(world.debris, body, DEBRIS_TUNING.burstCount, world.debrisHeatFloor, rng, spawnOpts);
+        world.body = null;
+      } else if (escaped) {
+        world.body = null;
+        events.bodyEscaped = true;
       }
     }
-    if (consumedNow) {
-      spawnFromBody(world.debris, body, DEBRIS_TUNING.burstCount, world.debrisHeatFloor, rng, spawnOpts);
-      world.body = null;
-    } else if (escaped) {
-      world.body = null;
-      events.bodyEscaped = true;
-    }
+    absorbed += updatePool(world.debris, subDt, world.debrisHeatFloor, env).absorbed;
   }
 
-  const { absorbed } = updatePool(world.debris, dt, world.debrisHeatFloor, env);
   if (absorbed > 0) {
     world.discBoost = creditFeed(world.discBoost, absorbed * world.feedPerParticle);
   }

@@ -21,6 +21,21 @@ export interface BodyStepResult {
 
 const scratch = new Vector3();
 
+/**
+ * What fraction of the full shedding rate a merely *stretching* body spills.
+ *
+ * Expressed so the absolute rate is always `stretchSpillRate` (ramped by depth
+ * past the tidal radius) whatever the mode's shedding rate is: a realistic TDE
+ * sheds at 0.9 per second and a cinematic spiral at 0.08, and a fixed fraction
+ * of the former would strip the star before it ever reached the shedding
+ * radius. This is the thin leader of the stream, not the disruption.
+ */
+export function spillFraction(r: number, body: Pick<Body, 'rTidal' | 'rShed' | 'lossBase'>): number {
+  const span = Math.max(body.rTidal - body.rShed, 1e-6);
+  const depth = Math.min(Math.max((body.rTidal - r) / span, 0), 1);
+  return Math.min((BODY_TUNING.stretchSpillRate * depth) / Math.max(body.lossBase, 1e-6), 1);
+}
+
 export function stepBody(body: Body, dt: number, env: GravityEnv): BodyStepResult {
   if (env.bh2) {
     // Newtonian pull from the secondary hole.
@@ -28,7 +43,7 @@ export function stepBody(body: Body, dt: number, env: GravityEnv): BodyStepResul
     const d = Math.max(scratch.length(), 1e-6);
     body.vel.addScaledVector(scratch, (-env.bh2.m / (d * d * d)) * dt);
   }
-  stepOrbit(body.pos, body.vel, dt, BODY_TUNING.drag, scratch, env.rs);
+  stepOrbit(body.pos, body.vel, dt, body.drag, scratch, env.rs);
   const r = body.pos.length();
 
   const before = body.phase;
@@ -40,11 +55,18 @@ export function stepBody(body: Body, dt: number, env: GravityEnv): BodyStepResul
   const blend = Math.min(1, dt / BODY_TUNING.stretchSmoothTime);
   body.stretch += (target - body.stretch) * blend;
 
+  // A body does not wait for full disruption to start losing mass. Once tides
+  // beat its self-gravity the near tip spills over, and that thin leader, 
+  // still-intact body at one end, hole at the other, is the connecting stream
+  // every disruption image shows. It ramps up with depth past the tidal radius
+  // until the body proper starts coming apart.
   let massShed = 0;
   if (body.phase === 'shedding') {
     massShed = Math.min(body.mass, massLossRate(body.mass, r, body.rShed, body.lossBase) * dt);
-    body.mass -= massShed;
+  } else if (body.phase === 'stretching') {
+    massShed = Math.min(body.mass, massLossRate(body.mass, r, body.rShed, body.lossBase) * dt * spillFraction(r, body));
   }
+  body.mass -= massShed;
 
   const torn = body.phase === 'stretching' || body.phase === 'shedding';
   const escaped =

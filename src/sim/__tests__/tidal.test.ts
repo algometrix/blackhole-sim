@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { BODY_TUNING } from '../../config';
 import { massLossRate, nextPhase, phaseFor, stretchTarget } from '../tidal';
 
-const { rTidal, rShed, massLossBase } = BODY_TUNING;
+// Fixed thresholds, not the shipped ones: this is the phase machine's
+// contract, and it must not change meaning when the art direction is retuned.
+const rTidal = 7;
+const rShed = 4.5;
+const { massLossBase } = BODY_TUNING;
 
 describe('tidal phase machine', () => {
   it('advances at the exact thresholds', () => {
