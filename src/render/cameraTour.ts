@@ -12,8 +12,22 @@
  * moves keep their framing when the hole grows. The tour only writes
  * camera.position and aims it at the origin; the caller disables orbit
  * controls while update() returns true and re-enables them when it stops.
+ *
+ * The tour also publishes `beta`, the camera velocity the relativistic optics
+ * in the raymarcher are computed from, and that number is NOT the derivative
+ * of the camera path. It cannot be: the flights are played back on a
+ * compressed clock, moving roughly 3 r_s per wall-clock second, which is
+ * several times light speed in units where c = 1, and the fly-in's recovery
+ * teleport would spike it to infinity. What is published instead is the
+ * physical speed of the trajectory each move stands for: a circular orbit for
+ * 'circle', free fall from rest at infinity for 'flyby' and 'flyin', directed
+ * along that move's own analytic tangent. Both speeds are derived and
+ * documented (docs/THEORY.md parts 3 and 9), which an art-directed "tour
+ * clock" divisor would not be.
  */
 import * as THREE from 'three';
+import { circularOrbitBeta, freeFallBeta } from '../physics/relativity';
+import { easedRunProgress, runSpeedFraction } from './tourKinematics';
 
 export type TourKind = 'flyin' | 'flyby' | 'circle';
 
@@ -40,6 +54,8 @@ const FLYBY = {
 const FLYIN = {
   duration: 14,
   turns: 1.5,
+  /** Seconds over which the optics boost eases in from a standing start. */
+  boostRampTime: 1.0,
   endRadius: 1.12,
   fadeStartRadius: 2.4,
   fadeEndRadius: 1.25,
@@ -53,22 +69,6 @@ const ORIGIN = new THREE.Vector3(0, 0, 0);
 function smooth01(x: number): number {
   const t = THREE.MathUtils.clamp(x, 0, 1);
   return t * t * (3 - 2 * t);
-}
-
-/**
- * Normalized distance travelled along the flyby at normalized time u: speed
- * smoothstep-ramps up over the first `ramp` fraction, holds, and ramps down
- * symmetrically. This is the analytic integral of that speed profile
- * (∫ smoothstep = x^3 - x^4/2 over a ramp), rescaled so progress(1) = 1.
- */
-function easedRunProgress(u: number, ramp: number): number {
-  if (u <= 0) return 0;
-  if (u >= 1) return 1;
-  const rampArea = (x: number): number => ramp * x * x * x * (1 - x / 2);
-  const total = 1 - ramp;
-  if (u < ramp) return rampArea(u / ramp) / total;
-  if (u <= 1 - ramp) return (ramp / 2 + (u - ramp)) / total;
-  return (total - rampArea((1 - u) / ramp)) / total;
 }
 
 export class CameraTour {
@@ -89,6 +89,16 @@ export class CameraTour {
   private recoverStartedAt = 0;
 
   private readonly scratchTarget = new THREE.Vector3();
+  private readonly scratchTangent = new THREE.Vector3();
+  private readonly scratchBasis = new THREE.Vector3();
+
+  /**
+   * Camera velocity in units of c, world frame, for the relativistic optics.
+   * Exactly the zero vector unless a flight is running, and every move ramps
+   * it in from exactly zero, so "at rest" is a fact of construction rather
+   * than a threshold.
+   */
+  readonly beta = new THREE.Vector3();
 
   get activeKind(): TourKind | null {
     return this.kind;
@@ -106,6 +116,7 @@ export class CameraTour {
     this.fadeValue = 1;
     this.recovering = false;
     this.recoverStartedAt = 0;
+    this.beta.set(0, 0, 0);
     this.startPos.copy(camera.position);
     this.startAzimuth = Math.atan2(camera.position.z, camera.position.x);
     // Spiral start in spherical terms, radius clamped so a start already at
@@ -118,6 +129,9 @@ export class CameraTour {
   cancel(): void {
     this.kind = null;
     this.fadeValue = 1;
+    // The camera stops dead at this instant, so the star field snapping back
+    // is consistent with what the camera is doing. It is a choice.
+    this.beta.set(0, 0, 0);
   }
 
   /** Drive the camera; returns true while the tour owns the camera. */
@@ -153,6 +167,11 @@ export class CameraTour {
     );
     const settle = smooth01(this.elapsed / CIRCLE.settleTime);
     camera.position.lerpVectors(this.startPos, this.scratchTarget, settle);
+    // Tangent of the target path, at the circular-orbit speed for wherever the
+    // camera has actually settled to. The settle blend doubles as the ramp in.
+    this.beta
+      .set(-Math.sin(azimuth), 0, Math.cos(azimuth))
+      .multiplyScalar(circularOrbitBeta(camera.position.length(), this.rs) * settle);
     return true;
   }
 
@@ -164,7 +183,8 @@ export class CameraTour {
     // length is chosen so both endpoints sit exactly `range` r_s from the hole.
     const halfLength =
       Math.sqrt(FLYBY.range ** 2 - FLYBY.offset ** 2 - FLYBY.height ** 2) * this.rs;
-    const progress = easedRunProgress(this.elapsed / FLYBY.duration, FLYBY.ramp);
+    const u = this.elapsed / FLYBY.duration;
+    const progress = easedRunProgress(u, FLYBY.ramp);
     this.scratchTarget.set(
       FLYBY.offset * this.rs,
       FLYBY.height * this.rs,
@@ -173,6 +193,13 @@ export class CameraTour {
     // Ease from wherever the camera was onto the start of the line.
     const blend = smooth01(this.elapsed / FLYBY.blendTime);
     camera.position.lerpVectors(this.startPos, this.scratchTarget, blend);
+    // The line runs along +z; the run's own speed profile is the ramp, so the
+    // boost is strongest exactly where the pass is fastest and zero at rest.
+    this.beta
+      .set(0, 0, 1)
+      .multiplyScalar(
+        freeFallBeta(camera.position.length(), this.rs) * runSpeedFraction(u, FLYBY.ramp),
+      );
     return true;
   }
 
@@ -196,6 +223,33 @@ export class CameraTour {
       radius * cosElevation * Math.sin(azimuth),
     );
 
+    // Tangent of the spiral, from the analytic derivatives of the three
+    // spherical coordinates above with respect to t, then given the free-fall
+    // speed at the current radius.
+    const dRadius = radius * Math.log(FLYIN.endRadius * this.rs / this.plungeRadius0);
+    const dAzimuth = FLYIN.turns * 2 * Math.PI;
+    const dElevation = -this.plungeElevation0 * 6 * t * (1 - t);
+    const sinElevation = Math.sin(elevation);
+    const cosAzimuth = Math.cos(azimuth);
+    const sinAzimuth = Math.sin(azimuth);
+    this.scratchTangent
+      .set(cosElevation * cosAzimuth, sinElevation, cosElevation * sinAzimuth)
+      .multiplyScalar(dRadius)
+      .addScaledVector(
+        this.scratchBasis.set(-sinAzimuth, 0, cosAzimuth),
+        radius * cosElevation * dAzimuth,
+      )
+      .addScaledVector(
+        this.scratchBasis.set(-sinElevation * cosAzimuth, cosElevation, -sinElevation * sinAzimuth),
+        radius * dElevation,
+      )
+      .normalize();
+    this.beta
+      .copy(this.scratchTangent)
+      .multiplyScalar(
+        freeFallBeta(radius, this.rs) * smooth01(this.elapsed / FLYIN.boostRampTime),
+      );
+
     // Fade to black across the photon-sphere approach (on radius, not time).
     this.fadeValue = smooth01(
       (radius - FLYIN.fadeEndRadius * this.rs) /
@@ -207,12 +261,15 @@ export class CameraTour {
     this.recovering = true;
     this.recoverStartedAt = this.elapsed;
     camera.position.set(0, FLYIN.recoverHeight * this.rs, FLYIN.recoverDistance * this.rs);
+    this.beta.set(0, 0, 0);
     return true;
   }
 
   /** Hold the overlook while brightness comes back; ends when fully faded in. */
   private updateRecover(camera: THREE.PerspectiveCamera): boolean {
     camera.position.set(0, FLYIN.recoverHeight * this.rs, FLYIN.recoverDistance * this.rs);
+    // Parked at the overlook: nothing is moving, so nothing is boosted.
+    this.beta.set(0, 0, 0);
     const t = (this.elapsed - this.recoverStartedAt) / FLYIN.recoverTime;
     this.fadeValue = smooth01(t);
     return t < 1;

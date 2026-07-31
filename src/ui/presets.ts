@@ -35,6 +35,7 @@ export interface Preset {
       Settings,
       | 'tdeMode'
       | 'timeScale'
+      | 'spin'
       | 'gwTimeCompression'
       | 'tdeTimeCompression'
       | 'discEnabled'
@@ -46,6 +47,8 @@ export interface Preset {
       | 'gridEnabled'
       | 'gridOpacity'
       | 'bloomStrength'
+      | 'cameraBoostEnabled'
+      | 'cameraBoostStrength'
     >
   > & { sky?: Partial<SkySettings> };
   body: ({ kind: BodyKind } & Placement) | null;
@@ -112,6 +115,17 @@ export const PRESETS: readonly Preset[] = [
     body: null,
     binary: null,
     camera: { distance: 26, elevation: 0.12, azimuth: 2.2 },
+    cinematic: false,
+  },
+  {
+    id: 'kerr',
+    name: 'Spinning hole (Kerr)',
+    description:
+      'A near-extremal hole seen almost edge on. The shadow is visibly D shaped, the bright ring is dragged tight against the horizon on the approaching side, and the disc runs all the way down to 0.62 rₛ.',
+    look: { spin: 0.95, discEnabled: true, discBrightness: 1.1, jetEnabled: false, gridEnabled: false, bloomStrength: 1.0 },
+    body: null,
+    binary: null,
+    camera: { distance: 18, elevation: 0.09, azimuth: 1.7 },
     cinematic: false,
   },
   {

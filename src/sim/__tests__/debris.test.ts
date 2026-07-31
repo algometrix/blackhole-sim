@@ -1,11 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { createPool, spawnFromBody, updatePool } from '../debris';
-import { vCircular } from '../gravity';
+import { vCircular, type GravityEnv } from '../gravity';
+import { horizonRadius, innermostStableCircularOrbit } from '../../physics/kerr';
 import type { Body } from '../types';
 import { mulberry32 } from './rng';
 
 const DT = 1 / 60;
+
+/** The boundaries a hole of unit r_s and this spin puts on the debris. */
+function envForSpin(spin: number): GravityEnv {
+  return {
+    rs: 1,
+    discInnerRadius: innermostStableCircularOrbit(spin, 'prograde'),
+    horizonRadius: horizonRadius(spin),
+    bh2: null,
+  };
+}
+
+/** One circularised managed particle at radius r, ready to be absorbed. */
+function circularisedParticle(r: number): ReturnType<typeof createPool> {
+  const pool = createPool(1);
+  pool.alive = 1;
+  pool.pos.set([r, 0, 0]);
+  pool.vel.set([0, 0, vCircular(Math.max(r, 1.5))]);
+  pool.life[0] = 1;
+  pool.flags[0] = 1;
+  return pool;
+}
 
 function sheddingBody(): Body {
   return {
@@ -146,6 +168,32 @@ describe('debris pool', () => {
     expect(absorbedTotal).toBe(1);
   });
 
+  it('takes the disc edge from the env, so spin moves where debris starts fading', () => {
+    // r = 2.0 is inside the still hole's inner edge at 3.0 and well outside
+    // the spinning hole's at 1.16, so the same particle starts being taken
+    // into the disc in one case and is left alone in the other.
+    const still = circularisedParticle(2.0);
+    updatePool(still, DT, 0, envForSpin(0));
+    expect(still.life[0]!).toBeLessThan(1);
+
+    const spinning = circularisedParticle(2.0);
+    updatePool(spinning, DT, 0, envForSpin(0.9));
+    expect(spinning.life[0]!).toBe(1);
+  });
+
+  it('takes the kill radius from the env, so a shrunken horizon stops eating early', () => {
+    // r = 0.8 is inside the still hole's kill radius of 1.05 and outside the
+    // near-extremal one of 0.56. Killing it at 1.05 around a hole whose disc
+    // reaches 0.62 would swallow debris before it could ever be absorbed.
+    const still = circularisedParticle(0.8);
+    updatePool(still, DT, 0, envForSpin(0));
+    expect(still.alive).toBe(0);
+
+    const spinning = circularisedParticle(0.8);
+    updatePool(spinning, DT, 0, envForSpin(0.998));
+    expect(spinning.alive).toBe(1);
+  });
+
   it('the secondary hole swallows nearby particles without disc credit', () => {
     const pool = createPool(1);
     pool.alive = 1;
@@ -154,7 +202,7 @@ describe('debris pool', () => {
     pool.life[0] = 1;
     pool.flags[0] = 1;
 
-    const env = { rs: 1, bh2: { pos: new Vector3(6.05, 0, 0), m: 0.15 } };
+    const env: GravityEnv = { ...envForSpin(0), bh2: { pos: new Vector3(6.05, 0, 0), m: 0.15 } };
     const { absorbed } = updatePool(pool, DT, 0, env);
     expect(pool.alive).toBe(0);
     expect(absorbed).toBe(0);

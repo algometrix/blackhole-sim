@@ -8,12 +8,22 @@ import type { GeodesicResult } from '../physics/geodesic';
 import type { PhotonPathManager } from '../render/photonPaths';
 import type { Settings } from '../settings';
 
-function summarize(results: GeodesicResult[]): string {
+/**
+ * Around a spinning hole the two edges of the shadow sit at different impact
+ * parameters, so an unsigned b no longer tells you which one a ray is near.
+ * The sense is reported alongside it.
+ */
+function summarize(results: GeodesicResult[], spin: number): string {
   const captured = results.filter((r) => r.fate === 'captured').length;
   const bs = results.map((r) => r.b);
   const bMin = Math.min(...bs).toFixed(2);
   const bMax = Math.max(...bs).toFixed(2);
-  const range = results.length === 1 ? `b=${bMin}` : `b∈[${bMin}, ${bMax}]`;
+  let range = results.length === 1 ? `b=${bMin}` : `b∈[${bMin}, ${bMax}]`;
+  if (spin > 0 && results.length === 1) {
+    const ray = results[0]!;
+    const sense = ray.axialAngularMomentum >= 0 ? 'prograde' : 'retrograde';
+    range = `b=${ray.axialAngularMomentum >= 0 ? '+' : '-'}${bMin} (${sense})`;
+  }
   return `${results.length} ray${results.length > 1 ? 's' : ''}: ${captured} captured · ${
     results.length - captured
   } escaped · ${range}`;
@@ -55,7 +65,7 @@ export class AimingController {
       Math.round(this.settings.photonCount),
       this.settings.photonSpreadDeg,
     );
-    this.onInfo(summarize(results));
+    this.onInfo(summarize(results, this.settings.spin));
   }
 
   private readonly onClick = (event: MouseEvent): void => {

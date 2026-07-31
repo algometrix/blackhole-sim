@@ -4,14 +4,14 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](tsconfig.json)
 [![Three.js](https://img.shields.io/badge/Three.js-r185-000000?logo=three.js&logoColor=white)](https://threejs.org)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vite.dev)
-[![Tests](https://img.shields.io/badge/tests-51%20passing-brightgreen)](src/sim/__tests__)
+[![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)](src/sim/__tests__)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ### [Open it in your browser](https://algometrix.github.io/blackhole-sim/)
 
 No install, no account. It needs WebGL2, which every current desktop browser has.
 
-An interactive black hole visualizer that ray-traces **real Schwarzschild photon geodesics on the GPU**, per pixel, every frame. It renders the event horizon shadow, the photon ring, a Doppler-beamed accretion disc bent over and under the hole (the *Interstellar* look), and a gravitationally lensed starfield. You can launch photons and watch their true paths, drop a planet or star and watch it be tidally shredded, and place a second black hole to watch a gravitational-wave inspiral end in a merger, complete with a LIGO-style audio chirp.
+An interactive black hole visualizer that ray-traces **real photon geodesics on the GPU**, per pixel, every frame, in Schwarzschild or in the exact Kerr metric of a spinning hole. It renders the event horizon shadow, the photon ring, a Doppler-beamed accretion disc bent over and under the hole (the *Interstellar* look), and a gravitationally lensed starfield. You can launch photons and watch their true paths, drop a planet or star and watch it be tidally shredded, and place a second black hole to watch a gravitational-wave inspiral end in a merger, complete with a LIGO-style audio chirp.
 
 Everything runs in the browser. No backend, no textures, no libraries beyond Three.js: the stars, disc, physics, and sound are all procedural.
 
@@ -27,7 +27,10 @@ Everything runs in the browser. No backend, no textures, no libraries beyond Thr
 
 - **Real GR light bending**: each pixel integrates the Schwarzschild null-geodesic equation with RK4 and adaptive stepping. The shadow, photon ring, Einstein-ring star smearing, and the disc's secondary images emerge from the math, not from textures.
 - **Accretion disc**: Shakura–Sunyaev temperature profile, differential-rotation noise that shears into trailing spirals, relativistic Doppler + gravitational redshift using the bent photon direction (correct even for the lensed secondary image).
+- **Spin (Kerr)**: turn the hole up to the Thorne limit, $a/M = 0.998$, and the exact Kerr metric is ray traced in Cartesian Kerr-Schild form. Everything follows from the one number: the horizon shrinks to $0.53\,r_s$, frame dragging pulls the approaching edge of the shadow in to $1.06\,r_s$ while the receding edge swings out to $3.50\,r_s$ (the D shape), the photon sphere splits into prograde and retrograde radii, and the disc's inner edge follows the last stable orbit in from $3\,r_s$ to $0.62\,r_s$. Spin 0 reproduces the Schwarzschild image exactly.
 - **Interactive photon trajectories**: click to launch fans of photons; escaped, captured, and near-critical rays are drawn as glowing curves computed by the same integrator the shader uses.
+- **Image order overlay**: colour the disc by how many half turns the light made before it reached you, a diagnostic that separates the direct image, the first lensed image and the photon ring.
+- **Relativistic camera**: during a scripted flight the star field aberrates toward the direction of travel and the sky ahead blueshifts and brightens while the sky behind reddens, computed from the physical speed of the trajectory the flight stands for. Exactly off when the camera is at rest.
 - **Tidal disruption**: place a planet or star. *Cinematic* mode gives a directable inward spiral with spaghettification and a debris stream that feeds and brightens the disc. *Realistic TDE* mode launches a true zero-energy parabolic plunge, one violent shredding at pericenter, and a physically motivated bound/unbound debris split (roughly half the debris escapes, as in real TDEs).
 - **Black hole merger**: place a second hole. Its orbit decays by the actual Peters (1964) gravitational-wave equations (the trajectory shape is exact; only wall-clock time is compressed). Both holes lens light. At contact the shadow swells to the merged mass minus the radiated gravitational-wave energy, with a ringdown wobble.
 - **Deep sky**: the background is a procedurally baked HDR cubemap. Five layers of stars on a stellar-temperature colour sequence (the bright ones get diffraction spikes), a warped galactic band with dust lanes that actually extinguish the stars behind them, emission nebulae in hydrogen red and doubly-ionised-oxygen teal, globular clusters that crowd extra stars into their cores, and distant galaxies with dust lanes and spiral arms. All of it is lensed by the same geodesics, so it smears into Einstein arcs near the shadow.
@@ -120,7 +123,7 @@ You need two things: **Node.js** (version 20 or newer) and this repository. That
 ### Other commands
 
 ```bash
-npm test           # run the 51-test physics/simulation suite
+npm test           # run the 100-test physics/simulation suite
 npm run typecheck  # strict TypeScript check
 npm run build      # production build into dist/
 npm run preview    # serve the production build
@@ -138,8 +141,11 @@ npm run preview    # serve the production build
 | Choose disruption physics | **Place → Disruption mode**: cinematic spiral vs realistic one-pass TDE |
 | Place a second black hole | **Place → Place black hole** → click; watch the inspiral chirp in the HUD |
 | Speed up / slow the inspiral | **Simulation → GW time ×** |
+| Spin the hole | **Black hole → Spin (a/M)**; the readout reports the horizon, ISCO and both photon-ring radii as you drag |
 | Launch photons | **Light paths → Enabled**, then click anywhere; rays per launch and spread are sliders |
+| See which lensed image is which | **Light rays → Tint image orders** (diagnostic; off by default) |
 | Camera flights | **Camera** folder: fly in (plunge), fly past, circle; `Esc` stops |
+| Relativistic optics on a flight | **Camera → Relativistic view**, with a flight-speed slider next to it |
 | Sound | **Sound → Enabled** (browsers require one click on the page first) |
 | Change the sky | **Deep sky** folder: star density, nebulae, galaxies, or reseed the whole thing |
 | Art-direction knobs | append `?debug=1` to the URL for the hidden tuning folder |
@@ -273,16 +279,20 @@ Every noise lookup is rotated by a fixed non-axis-aligned frame, because value n
 - The full spacetime of two holes requires numerical relativity; this app superposes two Schwarzschild deflections, which is qualitatively right (double shadows, eyebrow images) but not exact in the final strong-field moments. The ringdown "breathing" of the shadow is art-directed shorthand for quasi-normal ringing.
 - The cinematic disruption mode is deliberately directable (drag-driven inspiral, fixed tidal radii): physics-inspired theater, not a simulation. Realistic mode is the honest one.
 - Debris particles are occluded by the horizon and approximately deflected, but not fully ray-traced.
-- No black hole spin (Schwarzschild, not Kerr) and no light travel-time delay.
+- Spin is exact for the light, but not for the matter: debris and bodies stay Paczyński–Wiita (a Schwarzschild pseudo-potential), and only their boundaries (the disc's inner edge, the kill radius) move with the spin. Kerr is a one-hole solution, so placing a second hole forces the spin to 0, which also means a merger leaves a non-spinning remnant where a real equal-mass merger leaves $a/M \approx 0.69$.
+- No light travel-time delay: you see the whole disc at one instant rather than each part as it was when its light left.
+- The camera's relativistic colour shift is a per-channel RGB gain, not a spectral shift, and the overlay pass (debris, drawn rays, curvature grid) is not aberrated, so occlusion near the shadow edge is slightly wrong during a fast flight.
 - The disrupted body is drawn as a teardrop, the tidal silhouette, not a hydrodynamic result, and the feeding outflow is likewise a shape and a colour, driven by the disc's feed rate rather than by radiation transport.
-- The jet is art direction, not magnetohydrodynamics: a Schwarzschild hole has no Blandford–Znajek spin to tap. Its geometry, filaments and plasma speed are chosen; the Doppler beaming between the two cones and the lensing of the beams are computed.
+- The jet is art direction, not magnetohydrodynamics: Blandford–Znajek needs a magnetic field as well as spin, so the jet does not strengthen when you spin the hole up or fade when you spin it down. Its geometry, filaments and plasma speed are chosen; the Doppler beaming between the two cones and the lensing of the beams are computed.
 - The curvature funnel is an embedding diagram of one spatial slice, the standard picture, not a picture of "gravity pulling down". The wave ripple shows the strain pattern, exaggerated far beyond any real $h \sim 10^{-21}$.
 - The deep sky is invented. It follows real structure (a luminosity function skewed to faint stars, hotter stars bluer and brighter, dust that reddens and extinguishes, clusters, galaxies) but it is not a star catalogue.
 
 ## Architecture
 
 ```
-src/physics/   constants + CPU null-geodesic integrator (shared numbers with the shader)
+src/physics/   constants, Kerr closed forms, CPU null-geodesic integrator (Schwarzschild
+               superposition and exact Kerr), observer aberration, image order:
+               all shared, line for line, with the shader
 src/sim/       pure simulation core: PW gravity, tidal phase machine, debris pool,
                Peters binary inspiral, quadrupole wave state, zero WebGL/DOM,
                fully unit-tested (vitest)
@@ -300,6 +310,9 @@ The renderer's key trick: everything that must be *truly* lensed (sky, disc, the
 
 - J.-P. Luminet, *Image of a spherical black hole with thin accretion disk*, A&A 75, 228 (1979), the first computed image of what this app draws.
 - O. James, E. von Tunzelmann, P. Franklin, K. S. Thorne, *Gravitational lensing by spinning black holes in astrophysics, and in the movie Interstellar*, Class. Quantum Grav. 32, 065001 (2015).
+- R. P. Kerr, *Gravitational field of a spinning mass as an example of algebraically special metrics*, Phys. Rev. Lett. 11, 237 (1963), the spinning solution and its Kerr-Schild form.
+- J. M. Bardeen, W. H. Press, S. A. Teukolsky, *Rotating black holes: locally nonrotating frames, energy extraction, and scalar synchrotron radiation*, ApJ 178, 347 (1972), the Kerr ISCO and photon orbits.
+- K. S. Thorne, *Disk-accretion onto a black hole. II*, ApJ 191, 507 (1974), the a/M = 0.998 accretion limit.
 - P. C. Peters, *Gravitational Radiation and the Motion of Two Point Masses*, Phys. Rev. 136, B1224 (1964), the inspiral equations.
 - N. I. Shakura, R. A. Sunyaev, *Black holes in binary systems. Observational appearance*, A&A 24, 337 (1973), the disc temperature profile.
 - B. Paczyński, P. J. Wiita, *Thick accretion disks and supercritical luminosities*, A&A 88, 23 (1980), the pseudo-Newtonian potential.

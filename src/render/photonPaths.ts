@@ -5,12 +5,12 @@
  * occluded by the horizon via the shared mask.
  */
 import * as THREE from 'three';
-import { B_CRIT } from '../physics/constants';
 import {
   integrateNullGeodesic,
   type GeodesicResult,
   type GravityCenter,
 } from '../physics/geodesic';
+import { criticalImpactParameter } from '../physics/kerr';
 import { maskUniforms } from './horizonMask';
 import pathVert from './shaders/path.vert';
 import pathFrag from './shaders/path.frag';
@@ -21,14 +21,32 @@ const MAX_CURVE_POINTS = 260;
 
 type PathKind = 'escaped' | 'captured' | 'critical';
 
+/**
+ * Everything about the spacetime the drawn rays have to agree with the shader
+ * on, in one value: widening the provider rather than adding a second one
+ * keeps that mirroring to a single source of truth.
+ */
+export interface LensingState {
+  centers: readonly GravityCenter[];
+  /** Dimensionless Kerr spin a/M; 0 with a secondary present. */
+  spin: number;
+}
+
 const KIND_COLORS: Record<PathKind, THREE.Color> = {
   escaped: new THREE.Color(0.55, 2.0, 2.6),
   captured: new THREE.Color(2.6, 0.9, 0.3),
   critical: new THREE.Color(2.4, 2.4, 2.4),
 };
 
-function kindOf(result: GeodesicResult): PathKind {
-  if (Math.abs(result.b - B_CRIT) < 0.05) return 'critical';
+/**
+ * Which side of the hole a ray goes round decides which critical impact
+ * parameter it has to be compared against: spin drags the prograde edge of the
+ * shadow in and pushes the retrograde edge out, so a single b_crit would
+ * mislabel half the fan.
+ */
+function kindOf(result: GeodesicResult, spin: number): PathKind {
+  const sense = result.axialAngularMomentum >= 0 ? 'prograde' : 'retrograde';
+  if (Math.abs(result.b - Math.abs(criticalImpactParameter(spin, sense))) < 0.05) return 'critical';
   return result.fate === 'captured' ? 'captured' : 'escaped';
 }
 
@@ -49,7 +67,7 @@ export class PhotonPathManager {
   private readonly meshes: THREE.Mesh[] = [];
   private readonly materials: Record<PathKind, THREE.ShaderMaterial>;
 
-  constructor(private readonly centersProvider: () => readonly GravityCenter[]) {
+  constructor(private readonly lensingProvider: () => LensingState) {
     const makeMaterial = (kind: PathKind): THREE.ShaderMaterial =>
       new THREE.ShaderMaterial({
         vertexShader: pathVert,
@@ -69,17 +87,18 @@ export class PhotonPathManager {
 
   /** Integrate and draw one photon; returns the trajectory result. */
   launch(origin: THREE.Vector3, dir: THREE.Vector3): GeodesicResult {
+    const { centers, spin } = this.lensingProvider();
     const result = integrateNullGeodesic(
       { x: origin.x, y: origin.y, z: origin.z },
       { x: dir.x, y: dir.y, z: dir.z },
-      { maxSteps: 6000, recordEvery: 2, centers: this.centersProvider() },
+      { maxSteps: 6000, recordEvery: 2, centers, spin },
     );
     const curvePoints = toCurvePoints(result.points);
     if (curvePoints.length >= 2) {
       const curve = new THREE.CatmullRomCurve3(curvePoints);
       const segments = Math.min(curvePoints.length * 2, 400);
       const geometry = new THREE.TubeGeometry(curve, segments, TUBE_RADIUS, 6, false);
-      const mesh = new THREE.Mesh(geometry, this.materials[kindOf(result)]);
+      const mesh = new THREE.Mesh(geometry, this.materials[kindOf(result, spin)]);
       mesh.frustumCulled = false;
       this.group.add(mesh);
       this.meshes.push(mesh);
