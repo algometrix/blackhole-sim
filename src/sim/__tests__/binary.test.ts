@@ -77,7 +77,7 @@ describe('binary inspiral (Peters 1964)', () => {
     let mergers = 0;
     let rsFinal = 0;
     for (let i = 0; i < 10_000 && world.binary; i++) {
-      const { mergerNow } = stepWorld(world, DT, rng, COMPRESSION);
+      const { mergerNow } = stepWorld(world, DT, { gw: COMPRESSION, tde: 1, beacon: 1 }, rng);
       if (mergerNow) {
         mergers++;
         rsFinal = world.binary!.rsFinal;

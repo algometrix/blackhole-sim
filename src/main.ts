@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio/engine';
 import { AimingController } from './interact/aiming';
+import { BEACON_TUNING } from './config';
 import { DISC_OUTER } from './physics/constants';
 import type { GravityCenter } from './physics/geodesic';
 import {
@@ -14,6 +15,7 @@ import {
   innermostStableCircularOrbit,
 } from './physics/kerr';
 import { lorentzGamma } from './physics/relativity';
+import { BeaconPoint, type BeaconState } from './render/beaconPoint';
 import { BlackHolePass, type PlanetState } from './render/blackHolePass';
 import { CameraRig } from './render/cameraRig';
 import { CameraTour } from './render/cameraTour';
@@ -23,12 +25,15 @@ import { RenderPipeline, type AccumMode } from './render/pipeline';
 import { SpacetimeGrid } from './render/spacetimeGrid';
 import { Starfield } from './render/starfield';
 import { defaultSettings } from './settings';
+import { observeBeacon, releasePoint, type BeaconObservables } from './sim/beacon';
 import { displayRs, orbitalOmegaWall } from './sim/binary';
 import { bodyScale } from './sim/body';
 import { nextWaveState, restingWave } from './sim/gravitationalWave';
 import {
+  clearBeacon,
   clearBody,
   createWorld,
+  placeBeacon,
   placeBinary,
   placeBody,
   resetScene,
@@ -107,6 +112,9 @@ const audio = new AudioEngine();
 const debrisPoints = new DebrisPoints(world.debris);
 pipeline.overlayScene.add(debrisPoints.points);
 
+const beaconPoint = new BeaconPoint();
+pipeline.overlayScene.add(beaconPoint.points);
+
 const spacetimeGrid = new SpacetimeGrid();
 pipeline.overlayScene.add(spacetimeGrid.lines);
 
@@ -143,7 +151,10 @@ const placement = new PlacementController(
   pipeline.overlayScene,
   rig.controls,
   (kind, pos) => {
+    // `pos` already carries whatever lift the kind asked for, so the beacon
+    // arrives at its release point and not at the click on the plane.
     if (kind === 'bh2') placeBinary(world, pos);
+    else if (kind === 'beacon') placeBeacon(world, pos);
     else placeBody(world, kind, pos, settings.tdeMode);
   },
 );
@@ -208,6 +219,11 @@ function applyPreset(preset: Preset): void {
     presetPos.set(radius * Math.cos(angle), 0, radius * Math.sin(angle));
     placeBinary(world, presetPos);
   }
+  if (preset.beacon) {
+    const { radius, angle } = preset.beacon;
+    presetPos.set(radius * Math.cos(angle), 0, radius * Math.sin(angle));
+    placeBeacon(world, releasePoint(presetPos));
+  }
 
   rig.moveTo(preset.camera);
   photonPaths.setVisible(settings.photonsEnabled);
@@ -230,7 +246,9 @@ const panel = buildPanel(
     placePlanet: () => placement.enter('planet'),
     placeStar: () => placement.enter('star'),
     placeBlackHole: () => placement.enter('bh2'),
+    placeBeacon: () => placement.enter('beacon'),
     clearBody: () => clearBody(world),
+    clearBeacon: () => clearBeacon(world),
     clearPaths: () => photonPaths.clear(),
     onPhotonsToggled: (enabled) => {
       photonPaths.setVisible(enabled);
@@ -377,6 +395,36 @@ function syncImageOrderTint(): void {
   pipeline.resetAccumulation();
 }
 
+// --- infalling beacon sync (scratch object, no per-frame allocation) ---
+const beaconState: BeaconState = {
+  pos: new THREE.Vector3(),
+  radius: BEACON_TUNING.radius,
+  redshift: 1,
+  brightness: 1,
+};
+
+/**
+ * What a distant observer measures about the probe right now, recomputed once
+ * per frame and shared by the renderer and the readout. Null when there is no
+ * probe in the scene.
+ */
+let beaconView: BeaconObservables | null = null;
+
+function syncBeacon(view: BeaconObservables | null, viewportHeight: number): void {
+  const beacon = world.beacon;
+  if (!beacon || !view) {
+    beaconPoint.hide();
+    return;
+  }
+  // Drawn at the apparent radius, not the coordinate radius: near the horizon
+  // the image piles up on the photon ring instead of sinking into the shadow.
+  beaconState.pos.copy(beacon.direction).multiplyScalar(view.apparentRadius);
+  beaconState.radius = BEACON_TUNING.radius * beacon.horizonRs;
+  beaconState.redshift = view.redshift;
+  beaconState.brightness = BEACON_TUNING.emission * settings.beaconBrightness;
+  beaconPoint.setBeacon(beaconState, rig.camera, viewportHeight);
+}
+
 // --- auto-degrade on sustained slow frames ---
 const frameTimes: number[] = [];
 let lastDegradeCheck = 0;
@@ -405,6 +453,14 @@ let transientUntil = 0;
 function showTransientNote(text: string): void {
   transientNote = text;
   transientUntil = performance.now() + NOTE_VISIBLE_MS;
+}
+
+/**
+ * Compact number for the readout. The beacon's quantities span thirty decades
+ * on the way down, so a fixed number of decimal places is useless for them.
+ */
+function readable(value: number): string {
+  return value >= 0.01 ? value.toFixed(2) : value.toExponential(1);
 }
 
 function updateHud(now: number, fps: number): void {
@@ -438,6 +494,17 @@ function updateHud(now: number, fps: number): void {
         .toFixed(1)} · mass=${(world.body.mass * 100).toFixed(0)}%`,
     );
   }
+  if (beaconView) {
+    const view = beaconView;
+    lines.push(
+      `beacon (${view.settled ? 'frozen' : 'falling'}): r − rₛ = ${readable(view.horizonGap)}` +
+        ` · redshift ×${readable(view.redshift)} · your clock ${view.coordinateTime.toFixed(0)} rₛ/c`,
+    );
+    lines.push(
+      `  its own clock ${view.probeProperTime.toFixed(1)} of` +
+        ` ${view.probeProperTimeAtHorizon.toFixed(1)} rₛ/c to the horizon`,
+    );
+  }
   if (world.discBoost > 0.01) lines.push(`disc feed +${(world.discBoost * 100).toFixed(0)}%`);
   if (tour.activeKind) {
     const speed = cameraBeta.length();
@@ -460,6 +527,8 @@ function updateHud(now: number, fps: number): void {
 // --- main loop ---
 /** Scratch for the camera velocity pushed to the shader; never allocated per frame. */
 const cameraBeta = new THREE.Vector3();
+/** The three compressed clocks, refilled from the sliders each tick. */
+const clocks = { gw: 0, tde: 0, beacon: 0 };
 let last = performance.now();
 let acc = 0;
 let smoothedFps = 60;
@@ -480,17 +549,15 @@ function frame(now: number): void {
   let steps = 0;
   let mergerNow = false;
   let shredNow = false;
+  clocks.gw = settings.gwTimeCompression;
+  clocks.tde = settings.tdeTimeCompression;
+  clocks.beacon = settings.beaconTimeCompression;
   while (acc >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
-    const events = stepWorld(
-      world,
-      FIXED_DT,
-      Math.random,
-      settings.gwTimeCompression,
-      settings.tdeTimeCompression,
-    );
+    const events = stepWorld(world, FIXED_DT, clocks, Math.random);
     mergerNow ||= events.mergerNow;
     shredNow ||= events.shredNow;
     if (events.bodyEscaped) showTransientNote('remnant escaped with the mass it kept');
+    if (events.beaconLost) showTransientNote('the merger moved the horizon, so the beacon was removed');
     // The wave rides the simulation clock, so it freezes when the sim does.
     wave = nextWaveState(
       wave,
@@ -530,6 +597,9 @@ function frame(now: number): void {
   });
   renderer.getDrawingBufferSize(drawSize);
   debrisPoints.update(world.debris, world.debrisBrightness, rig.camera, drawSize.y);
+  // Measured once, then shared by the sprite and the (throttled) readout.
+  beaconView = world.beacon ? observeBeacon(world.beacon) : null;
+  syncBeacon(beaconView, drawSize.y);
 
   audio.update(frameDt, {
     discBoost: world.discBoost,
@@ -560,6 +630,9 @@ function frame(now: number): void {
     .multiplyScalar(settings.cameraBoostEnabled ? settings.cameraBoostStrength : 0);
   bhPass.setCameraBeta(cameraBeta);
 
+  // Only raymarched content counts. The beacon is drawn in the overlay pass,
+  // which is re-rendered every frame even while a converged raymarch is held,
+  // so a falling probe does not have to spoil idle accumulation.
   const bhContentMoving = world.body !== null || world.binary !== null;
   const accumMode = chooseAccumMode(idle, settings.paused, bhContentMoving);
   pipeline.render(world.time, {

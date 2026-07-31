@@ -26,14 +26,14 @@ the summary, jump to [the table at the end](#every-equation-and-where-it-lives).
 7. [The last stable orbit](#7-the-last-stable-orbit)
 8. [Why the disc glows, and how hot](#8-why-the-disc-glows-and-how-hot)
 9. [Why one side of the disc is brighter](#9-why-one-side-of-the-disc-is-brighter)
-10. [Tides, and why they tear stars apart](#10-tides-and-why-they-tear-stars-apart)
-11. [Why the debris becomes a stream](#11-why-the-debris-becomes-a-stream)
-12. [Gravitational waves and the chirp](#12-gravitational-waves-and-the-chirp)
-13. [The funnel: what curved space actually means](#13-the-funnel-what-curved-space-actually-means)
-14. [Jets, beaming, and the outflow](#14-jets-beaming-and-the-outflow)
-15. [Flying fast: what the sky does](#15-flying-fast-what-the-sky-does)
-16. [Spin, and what it drags](#16-spin-and-what-it-drags)
-17. [What we cheat on](#17-what-we-cheat-on)
+11. [Tides, and why they tear stars apart](#11-tides-and-why-they-tear-stars-apart)
+12. [Why the debris becomes a stream](#12-why-the-debris-becomes-a-stream)
+13. [Gravitational waves and the chirp](#13-gravitational-waves-and-the-chirp)
+14. [The funnel: what curved space actually means](#14-the-funnel-what-curved-space-actually-means)
+15. [Jets, beaming, and the outflow](#15-jets-beaming-and-the-outflow)
+16. [Flying fast: what the sky does](#16-flying-fast-what-the-sky-does)
+17. [Spin, and what it drags](#17-spin-and-what-it-drags)
+18. [What we cheat on](#18-what-we-cheat-on)
 18. [Every equation and where it lives](#every-equation-and-where-it-lives)
 
 ---
@@ -404,7 +404,123 @@ Two details this app gets right that are easy to get wrong:
 
 ---
 
-## 10. Tides, and why they tear stars apart
+## 10. What a distant observer sees fall in
+
+Drop something into a black hole and watch it go. It does not vanish. It slows,
+it reddens, it dims, and then it stops, hanging just outside the shadow, fading
+until there is nothing left to see. It never crosses.
+
+That is true. It is also only true for **you**. The thing you dropped crossed
+the horizon a short while later by its own watch and felt nothing in
+particular. Both statements are correct, and this part works out each of them
+from the same starting line, because the gap between them is the clearest
+thing a black hole does to time.
+
+Take the simplest possible case: a probe released **from rest** at radius
+$r_0$, falling straight in, no sideways motion at all.
+
+**One conserved number.** Anything in free fall carries an energy per unit mass
+that never changes along its path. For a probe let go from rest at $r_0$ it is
+just the metric's clock factor at the radius it was released from:
+
+$$E = \sqrt{1 - \frac{r_s}{r_0}}$$
+
+$E = 1$ for a fall that started infinitely far away, and it is smaller the
+closer in you let go. Everything below is written in terms of $E$ and the same
+factor evaluated at the probe's current radius,
+
+$$f \equiv 1 - \frac{r_s}{r}$$
+
+**How fast it is going.** Put an observer at radius $r$ hovering on a rocket,
+holding station, and let the probe fly past. The speed that observer measures
+is
+
+$$v = \frac{\sqrt{E^2 - f}}{E}$$
+
+At $r = r_0$ this is zero, which is the release condition. As $r \to r_s$,
+$f \to 0$ and $v \to 1$: the probe passes a hovering observer *at the speed of
+light*. That is the horizon's real definition. It is not a wall and there is
+nothing there to hit; it is the surface where hovering stops being possible,
+because holding station would take a rocket faster than light.
+
+**Why it reddens.** Two effects stack, and you have met both. The light has to
+climb out of the well, which costs it energy: that is the $\sqrt{f}$
+gravitational factor from Part 9. And the source is running away from you at
+speed $v$, which is the ordinary Doppler shift of recession. Multiply them:
+
+$$g = \underbrace{\sqrt{f}}_{\text{climbing out}} \times \underbrace{\frac{\sqrt{1 - v^2}}{1 + v}}_{\text{running away}} = \frac{f}{E + \sqrt{E^2 - f}}$$
+
+The two expressions are the same number; substitute $v$ into the left one and
+the square roots cancel. The right-hand form is worth keeping because it makes
+the endgame obvious. Near the horizon $f \to 0$ while $\sqrt{E^2 - f} \to E$,
+so the denominator settles at $2E$ and
+
+$$g \to \frac{r - r_s}{2\,E\,r_s}$$
+
+**the redshift is proportional to the gap.** Brightness goes as $g^3$ (Part 9
+again), so every factor of ten the probe closes on the horizon costs it a
+factor of a thousand in brightness. Between release at $7\,r_s$ and a gap of
+$10^{-3}\,r_s$ it fades by nine decades. This is why nobody has ever
+photographed something falling in: you have a few seconds of it, and then it is
+gone, whatever your exposure.
+
+**Why it stalls.** Coordinate time $t$ is the time on your clock, far away.
+Dividing the probe's radial motion by the rate its clock runs relative to yours
+gives
+
+$$\frac{dr}{dt} = -f\,v = -\frac{f\sqrt{E^2 - f}}{E}$$
+
+Both factors of $f$ matter here and they do different jobs, but near the
+horizon the second one has already saturated ($v \to 1$) while the first is
+still collapsing. Write the gap as $\varepsilon = r - r_s$, note that
+$f = \varepsilon/(r_s + \varepsilon) \to \varepsilon/r_s$, and you get
+
+$$\frac{d\varepsilon}{dt} \to -\frac{\varepsilon}{r_s} \quad\Longrightarrow\quad \varepsilon(t) \propto e^{-t/r_s}$$
+
+An exponential decay never reaches zero. The gap halves every $0.69\,r_s/c$ of
+your time, forever: the probe is always still outside, and the coordinate time
+to cross the horizon is infinite. That is the freeze, and notice that nothing
+was imposed to get it. It fell out of one line of algebra.
+
+**On the probe's own clock.** Now ask the probe. Its own elapsed time obeys
+$d\tau = dr/\sqrt{E^2 - f}$, which integrates to a cycloid, the same curve a
+point on a rolling wheel traces:
+
+$$\tau = \frac{1}{2}\sqrt{\frac{r_0^3}{r_s}}\,\left(\eta + \sin\eta\right), \qquad \cos\eta = \frac{2r}{r_0} - 1$$
+
+At the horizon $\eta$ is a perfectly ordinary angle and $\tau$ is a perfectly
+ordinary number. From a release at $7\,r_s$ the crossing happens at
+$\tau = 28.4\,r_s/c$, and for a hole of a million suns that is about half a
+minute. The probe sails through, measures no jolt, sees no wall, and has some
+time left before the tides get serious.
+
+So: infinite on your clock, half a minute on its. Neither is an illusion and
+neither is the "real" answer. They are answers to two different questions.
+
+> **In the code.** `src/sim/beacon.ts`, which carries all of the above as pure
+> functions, and is the one moving thing in this app on exact Schwarzschild
+> motion rather than the Paczyński-Wiita stand-in everything else uses. That is
+> not fussiness: PW has no coordinate-time divergence at all, and PW matter
+> crosses $r_s$ in finite time, so reusing it here would have made the effect
+> impossible to show. The state it integrates is the gap $r - r_s$ rather than
+> $r$, because an exponential decay stored as a difference of two order-one
+> numbers stops being physics and starts being rounding at $10^{-16}$.
+
+> **Honest note: where the image sits.** A probe that close to the hole is not
+> seen where it is. Light leaving it is bent so hard that its image piles up on
+> the photon ring, and the app draws it at the apparent radius
+> $b = r/\sqrt{1 - r_s/r}$, floored at $b_{\text{crit}}$ (Part 6), which is
+> exactly the impact parameter of the ray that leaves sideways and just
+> escapes. That is right for an emitter seen edge-on with the ray at its
+> turning point, and it is applied in every viewing geometry as a first-order
+> stand-in: the true image position needs the deflection integral solved for
+> the observer's own direction. The probe is also drawn at a fixed size on
+> screen, because a real one would be far under a pixel. What the fall changes
+> is its colour and its brightness, and those are computed.
+
+---
+
+## 11. Tides, and why they tear stars apart
 
 <img src="../assets/diagrams/tides.svg" alt="A star near a black hole, with a strong pull arrow on the near side and a weaker one on the far side" width="660">
 
@@ -450,7 +566,7 @@ supermassive case.
 
 ---
 
-## 11. Why the debris becomes a stream
+## 12. Why the debris becomes a stream
 
 <img src="../assets/diagrams/energy-spread.svg" alt="A stretched star splitting into a bound half that falls back and an unbound half that escapes" width="660">
 
@@ -493,7 +609,7 @@ fail without them.
 
 ---
 
-## 12. Gravitational waves and the chirp
+## 13. Gravitational waves and the chirp
 
 <img src="../assets/diagrams/quadrupole-wave.svg" alt="Two orbiting holes with ripples wound into a spiral, two crests per orbit" width="660">
 
@@ -537,7 +653,7 @@ travel outward.
 
 ---
 
-## 13. The funnel: what curved space actually means
+## 14. The funnel: what curved space actually means
 
 <img src="../assets/diagrams/flamm-funnel.svg" alt="A funnel-shaped surface narrowing to a throat, with rings and radial lines" width="660">
 
@@ -585,11 +701,11 @@ bending of *time* at least as much as space, and none of that is in the
 picture. It is an honest visualisation of one true thing, not of everything.
 
 > **In the code:** `embeddingDepth` in `src/render/spacetimeGrid.ts`, with the
-> wave from Part 12 added on top.
+> wave from Part 13 added on top.
 
 ---
 
-## 14. Jets, beaming, and the outflow
+## 15. Jets, beaming, and the outflow
 
 Two very different things come out of the poles, and this app draws both.
 
@@ -623,7 +739,7 @@ away with it.
 
 ---
 
-## 15. Flying fast: what the sky does
+## 16. Flying fast: what the sky does
 
 Everything so far assumed you were sitting still. Take the camera on one of the
 scripted flights and two things happen at once, and they are the same thing
@@ -685,7 +801,7 @@ this.
 
 ---
 
-## 16. Spin, and what it drags
+## 17. Spin, and what it drags
 
 Every real black hole spins. Schwarzschild is the special case where it does
 not, and once you let it turn, the picture changes in four visible ways that
@@ -786,7 +902,7 @@ zero in the prograde $b_{\text{crit}}$.
 
 ---
 
-## 17. What we cheat on
+## 18. What we cheat on
 
 A physics document that only lists what it gets right is advertising. Here is
 the other column.
@@ -803,8 +919,8 @@ the other column.
 | **The camera's colour shift is an RGB gain.** | There are no spectra in this renderer, only three channels. | Real Doppler moves light in and out of the visible band and changes which stars are seen at all. Exactly neutral at rest. |
 | **The overlay pass is not aberrated.** | Debris, rays and the grid are drawn by ordinary projection in pass 2. | During a fast flight the raymarched shadow has moved and that geometry has not, so occlusion near the shadow edge is slightly wrong. |
 | **The disc is infinitely thin.** | A volumetric disc multiplies the per-pixel cost. | Raymarched volume with real optical depth. |
-| **Two clocks run fast.** | A disruption takes days, an inspiral from $8\,r_s$ takes about 1600 time units. | Nothing: the trajectories are exact, only the clock is compressed, and the app says so in the interface. |
-| **No light travel-time delay.** | You see the whole disc at one instant rather than each part as it was when its light left. | Track photon arrival times through the march. |
+| **Three clocks run fast.** | A disruption takes days, an inspiral from $8\,r_s$ takes about 1600 time units, and a probe dropped from $7\,r_s$ takes forty seconds to stop being visible. | Nothing: the trajectories are exact, only the clock is compressed, and the app says so in the interface. |
+| **No light travel-time delay.** | You see the whole disc at one instant rather than each part as it was when its light left. The infalling probe is drawn at its current coordinate position too, with propagation treated as instantaneous: that changes the time constant of the freeze, not the fact of it. | Track photon arrival times through the march. |
 | **The sky is invented.** | It follows real structure (luminosity function, dust extinction, clustering) but it is not a star catalogue. | A real survey texture, at the cost of every image looking identical. |
 
 ---
@@ -841,7 +957,7 @@ the other column.
 | Radiated mass | $E_{\text{rad}} \approx 0.048 M_{\text{tot}}\,\eta/0.25$ | `sim/binary.ts` |
 | Flamm's paraboloid | $z = 2\sqrt{r_s(r - r_s)}$ | `render/spacetimeGrid.ts` |
 | Relativistic beaming | $\delta = 1/\gamma(1 - \beta\cos\theta)$, $I \propto \delta^3$ | `shaders/geodesic.frag` |
-| Eddington luminosity | $L = 4\pi GMm_pc/\sigma_T$ | Part 14, motivates the outflow |
+| Eddington luminosity | $L = 4\pi GMm_pc/\sigma_T$ | Part 15, motivates the outflow |
 
 ---
 
@@ -854,9 +970,9 @@ the other column.
   paper. The full version of Parts 5 to 9, written by the people who did it
   for the film.
 - **Rees (1988)** on tidal disruption, for Parts 10 and 11.
-- **Peters (1964)** for Part 12, four pages that predicted a sound nobody heard
+- **Peters (1964)** for Part 13, four pages that predicted a sound nobody heard
   for fifty-one years.
-- **Bardeen, Press and Teukolsky (1972)**, *Rotating black holes*, for Part 16.
+- **Bardeen, Press and Teukolsky (1972)**, *Rotating black holes*, for Part 17.
   The ISCO and photon-orbit formulas this app evaluates are theirs.
 - **Thorne (1974)** for the 0.998 limit: why a hole fed by a disc cannot quite
   reach extremal.

@@ -18,7 +18,7 @@ function runFor(ticks: number, compression: number): Vector3 {
     seed = (seed * 1103515245 + 12345) % 2147483648;
     return seed / 2147483648;
   };
-  for (let i = 0; i < ticks; i++) stepWorld(world, DT, rng, 40, compression);
+  for (let i = 0; i < ticks; i++) stepWorld(world, DT, { gw: 40, tde: compression, beacon: 1 }, rng);
   return world.body!.pos.clone();
 }
 

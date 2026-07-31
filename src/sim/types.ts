@@ -61,6 +61,37 @@ export interface BinaryState {
 }
 
 /**
+ * A probe released from rest on a radial line and falling in (see beacon.ts).
+ * State lives here, behaviour lives in beacon.ts, the way Body/body.ts and
+ * BinaryState/binary.ts are split.
+ */
+export interface Beacon {
+  /**
+   * Unit vector from the hole to the release point. Radial free fall never
+   * leaves this ray, so one direction covers the whole trajectory.
+   */
+  readonly direction: Vector3;
+  /**
+   * The integrated state is r - r_s, not r. Near the horizon the gap decays
+   * exponentially, and a float64 holding r would exhaust its significant
+   * digits at gap ~ 1e-16 and snap the probe onto the horizon it never
+   * reaches.
+   */
+  horizonGap: number;
+  /** Release radius, where it was let go at rest. */
+  readonly r0: number;
+  /**
+   * The primary r_s this solution was built against. A merger moves the
+   * horizon, which invalidates the fall entirely (see stepWorld).
+   */
+  readonly horizonRs: number;
+  /** Distant-observer time since release, r_s/c. Diverges as it falls. */
+  coordinateTime: number;
+  /** True Schwarzschild coordinate position, derived each tick. */
+  pos: Vector3;
+}
+
+/**
  * Structure-of-arrays particle pool, preallocated at capacity. The render
  * layer wraps these exact arrays in BufferAttributes (zero copy); the first
  * `alive` entries are the live particles (swap-remove keeps them packed).
@@ -85,6 +116,11 @@ export interface World {
   body: Body | null;
   /** Secondary hole on a GW inspiral, or null when there is none. */
   binary: BinaryState | null;
+  /**
+   * The infalling probe, or null. Independent of `body`: a star being torn
+   * apart and a probe freezing at the horizon can share the scene.
+   */
+  beacon: Beacon | null;
   /** Primary Schwarzschild radius; 1 initially, grows after a merger. */
   primaryRs: number;
   /**

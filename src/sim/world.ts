@@ -5,10 +5,18 @@
  * feeding, all pure CPU math.
  */
 import { Vector3 } from 'three';
-import { BINARY_TUNING, BODY_TUNING, DEBRIS_TUNING, DISC_TUNING, TDE_TUNING } from '../config';
+import {
+  BEACON_TUNING,
+  BINARY_TUNING,
+  BODY_TUNING,
+  DEBRIS_TUNING,
+  DISC_TUNING,
+  TDE_TUNING,
+} from '../config';
 import { A_STAR_MAX } from '../physics/constants';
 import { horizonRadius, innermostStableCircularOrbit } from '../physics/kerr';
 import type { TdeMode } from '../settings';
+import { stepBeacon } from './beacon';
 import { createBinary, stepBinary, stepRingdown } from './binary';
 import { stepBody } from './body';
 import { createPool, spawnFromBody, updatePool, type Rng } from './debris';
@@ -25,13 +33,36 @@ export interface WorldEvents {
   shredNow: boolean;
   /** A realistic-mode remnant escaped and was removed this tick. */
   bodyEscaped: boolean;
+  /** A merger moved the horizon out from under the beacon, so it was removed. */
+  beaconLost: boolean;
 }
+
+/**
+ * The three compressed clocks, named rather than positional. Three trailing
+ * numbers on `stepWorld` would have read as `stepWorld(world, dt, rng, 40, 1, 3)`
+ * at the call site, which says nothing about which clock is which.
+ */
+export interface SimClocks {
+  /** Wall-clock compression of the binary inspiral. */
+  readonly gw: number;
+  /** Wall-clock compression of a disruption and its debris. */
+  readonly tde: number;
+  /** Wall-clock compression of the distant observer's clock for the beacon. */
+  readonly beacon: number;
+}
+
+export const DEFAULT_CLOCKS: SimClocks = Object.freeze({
+  gw: BINARY_TUNING.timeCompression,
+  tde: BODY_TUNING.timeCompression,
+  beacon: BEACON_TUNING.timeCompression,
+});
 
 export function createWorld(maxParticles: number = DEBRIS_TUNING.maxParticles): World {
   return {
     time: 0,
     body: null,
     binary: null,
+    beacon: null,
     primaryRs: 1,
     spin: 0,
     debris: createPool(maxParticles),
@@ -120,6 +151,36 @@ export function clearBody(world: World): void {
 }
 
 /**
+ * Release (or re-release) the probe from rest at `release`, which is already
+ * the lifted release point (`beacon.releasePoint` puts it there). The fall is
+ * a closed-form Schwarzschild solution anchored to the primary r_s at this
+ * moment, so that radius is snapshotted with it.
+ */
+export function placeBeacon(world: World, release: Vector3): void {
+  const rs = world.primaryRs;
+  const r0 = release.length();
+  if (r0 <= rs) {
+    throw new Error(`placeBeacon needs a release radius (${r0}) outside r_s (${rs})`);
+  }
+  world.beacon = {
+    direction: release.clone().multiplyScalar(1 / r0),
+    horizonGap: r0 - rs,
+    r0,
+    horizonRs: rs,
+    coordinateTime: 0,
+    pos: release.clone(),
+  };
+}
+
+/**
+ * Take the probe out of the scene. Nothing else ever will: it is never
+ * swallowed and never expires, because never finishing the fall is the point.
+ */
+export function clearBeacon(world: World): void {
+  world.beacon = null;
+}
+
+/**
  * Empty the scene: no body, no secondary, no debris, no leftover feeding.
  * A ringdown in progress is settled first, so the primary keeps the mass it
  * gained in the merger instead of snapping back to its pre-merger radius.
@@ -128,6 +189,7 @@ export function resetScene(world: World): void {
   if (world.binary?.phase === 'ringdown') world.primaryRs = world.binary.rsFinal;
   world.body = null;
   world.binary = null;
+  world.beacon = null;
   world.debris.alive = 0;
   world.spawnAcc = 0;
   world.discBoost = 0;
@@ -187,15 +249,18 @@ const MAX_BODY_STEP = 0.1;
 const MAX_BODY_SUBSTEPS = 6;
 
 /**
- * One tick. Two clocks run inside it:
+ * One tick. Three clocks run inside it:
  *
- * - `gwCompression` for the binary inspiral. Exact: `stepBinary` advances
+ * - `clocks.gw` for the binary inspiral. Exact: `stepBinary` advances
  *   closed-form Peters and Kepler quantities, so only the clock changes.
- * - `tdeCompression` for the body and its debris. A circular orbit at 12 r_s
+ * - `clocks.tde` for the body and its debris. A circular orbit at 12 r_s
  *   takes ~370 time units, so at 1:1 a disruption unfolds over ten minutes and
  *   the debris never completes a turn, so the stream reads as a scattering of
  *   dots instead of the wound spiral it is. Substepped to `MAX_BODY_STEP` so
  *   the compressed trajectory matches the uncompressed one.
+ * - `clocks.beacon` for the infalling probe, and never the disruption clock,
+ *   however tempting sharing one would be: the beacon's clock *is* the distant
+ *   observer's clock, which is the quantity the whole feature is showing.
  *
  * The disc keeps the uncompressed clock: it is a background, and shearing it
  * twenty times faster would turn it into a pinwheel.
@@ -203,15 +268,19 @@ const MAX_BODY_SUBSTEPS = 6;
 export function stepWorld(
   world: World,
   dt: number,
+  clocks: SimClocks = DEFAULT_CLOCKS,
   rng: Rng = Math.random,
-  gwCompression: number = BINARY_TUNING.timeCompression,
-  tdeCompression: number = BODY_TUNING.timeCompression,
 ): WorldEvents {
-  const events: WorldEvents = { mergerNow: false, shredNow: false, bodyEscaped: false };
+  const events: WorldEvents = {
+    mergerNow: false,
+    shredNow: false,
+    bodyEscaped: false,
+    beaconLost: false,
+  };
 
   const binary = world.binary;
   if (binary?.phase === 'inspiral') {
-    events.mergerNow = stepBinary(binary, world.primaryRs, dt, gwCompression).mergedNow;
+    events.mergerNow = stepBinary(binary, world.primaryRs, dt, clocks.gw).mergedNow;
   } else if (binary?.phase === 'ringdown' && stepRingdown(binary, dt)) {
     world.primaryRs = binary.rsFinal;
     world.binary = null;
@@ -226,7 +295,7 @@ export function stepWorld(
         : null,
   };
 
-  const bodyDt = dt * tdeCompression;
+  const bodyDt = dt * clocks.tde;
   const substeps = Math.min(Math.max(1, Math.ceil(bodyDt / MAX_BODY_STEP)), MAX_BODY_SUBSTEPS);
   const subDt = bodyDt / substeps;
   let absorbed = 0;
@@ -258,6 +327,18 @@ export function stepWorld(
       }
     }
     absorbed += updatePool(world.debris, subDt, world.debrisHeatFloor, env).absorbed;
+  }
+
+  const beacon = world.beacon;
+  if (beacon && beacon.horizonRs !== world.primaryRs) {
+    // A merger moved the horizon. The probe's whole trajectory is a closed-form
+    // solution anchored to the r_s it was released against, and there is no
+    // honest way to re-anchor a fall already in progress to a bigger hole, so
+    // it is removed and the readout says why.
+    world.beacon = null;
+    events.beaconLost = true;
+  } else if (beacon) {
+    stepBeacon(beacon, dt * clocks.beacon);
   }
 
   if (absorbed > 0) {

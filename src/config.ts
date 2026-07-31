@@ -3,10 +3,12 @@
  * sim-seconds. Physics constants (horizon, ISCO, ...) live in
  * physics/constants.ts; these are the directable knobs layered on top.
  *
- * Two clocks tick in this file. BODY_TUNING and DEBRIS_TUNING run on the
+ * Three clocks tick in this file. BODY_TUNING and DEBRIS_TUNING run on the
  * compressed *disruption clock* (see BODY_TUNING.timeCompression), so a rate
  * of "per second" there is per disruption-second, roughly eight times faster
- * than the wall clock at the shipped default. Everything else (the disc, the
+ * than the wall clock at the shipped default. BINARY_TUNING runs on the
+ * *inspiral clock*, and BEACON_TUNING on the *beacon clock*, which is
+ * deliberately the slowest of the three. Everything else (the disc, the
  * camera, the audio) runs on the plain simulation clock.
  */
 
@@ -181,6 +183,44 @@ export const TDE_TUNING = {
   energySpread: 0.35,
   /** A remnant that makes it back out past this radius has escaped. */
   escapeRadius: 30,
+};
+
+export const BEACON_TUNING = {
+  /**
+   * Release radius floor for a click. Closer in than this and the probe is
+   * already inside the disc when it is let go, so the interesting part of the
+   * fall happens behind the glare.
+   */
+  rMin: 4.0,
+  /**
+   * Tilt of the drop line out of the disc plane, radians (~35 deg). A probe
+   * released inside the plane spends the fall behind the disc's inner glare;
+   * one released near the pole falls down the jet and through the wind cone,
+   * which opens to about 44 deg from the axis. This threads between them.
+   */
+  inclination: 0.61,
+  /**
+   * Drawn radius, r_s units. Art-directed: a real probe is a point and a point
+   * is a fraction of a pixel, so the sprite also carries a screen-space floor
+   * (see render/beaconPoint.ts). It is a legibility choice, not a size.
+   */
+  radius: 0.06,
+  /**
+   * Wall-clock compression of the distant observer's clock for the probe. The
+   * same trick the other two clocks use, and for the same reason: scaling the
+   * clock uniformly speeds up the fall and the exponential stall together, so
+   * the shape of the freeze is untouched. Slower than the disruption clock on
+   * purpose, because here the observer's clock is the quantity on show.
+   */
+  timeCompression: 3,
+  /** Emission scale, matched against the disc's own factor of 16. */
+  emission: 22.0,
+  /**
+   * Gap (r_s units) below which the image counts as frozen. Past this the
+   * probe moves by less than a thousandth of an r_s while its brightness has
+   * already fallen by nine decades, so nothing more is going to happen.
+   */
+  settledGap: 1e-3,
 };
 
 export const GRID_TUNING = {
