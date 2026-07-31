@@ -4,7 +4,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](tsconfig.json)
 [![Three.js](https://img.shields.io/badge/Three.js-r185-000000?logo=three.js&logoColor=white)](https://threejs.org)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vite.dev)
-[![Tests](https://img.shields.io/badge/tests-47%20passing-brightgreen)](src/sim/__tests__)
+[![Tests](https://img.shields.io/badge/tests-51%20passing-brightgreen)](src/sim/__tests__)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 An interactive black hole visualizer that ray-traces **real Schwarzschild photon geodesics on the GPU**, per pixel, every frame. It renders the event horizon shadow, the photon ring, a Doppler-beamed accretion disc bent over and under the hole (the *Interstellar* look), and a gravitationally lensed starfield. You can launch photons and watch their true paths, drop a planet or star and watch it be tidally shredded, and place a second black hole to watch a gravitational-wave inspiral end in a merger, complete with a LIGO-style audio chirp.
@@ -116,7 +116,7 @@ You need two things: **Node.js** (version 20 or newer) and this repository. That
 ### Other commands
 
 ```bash
-npm test           # run the 47-test physics/simulation suite
+npm test           # run the 51-test physics/simulation suite
 npm run typecheck  # strict TypeScript check
 npm run build      # production build into dist/
 npm run preview    # serve the production build

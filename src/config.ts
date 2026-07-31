@@ -163,23 +163,23 @@ export const BINARY_TUNING = {
 
 export const TDE_TUNING = {
   /**
-   * Tidal radii for realistic mode, r_s units. A star is fluffier than a rocky
-   * planet, so it shreds farther out. Both sit outside the disc's outer edge
+   * Radius at which a body comes apart in realistic mode, r_s units. A star is
+   * fluffier than a rocky planet, so it shreds farther out. Both sit outside the disc's outer edge
    * on purpose: r_T / r_s grows as M^(-2/3), so for a supermassive hole the
    * disruption really does happen well outside the ISCO, and a stream torn
    * apart inside the disc is invisible against its glare.
    */
-  starTidalRadius: 9.0,
-  planetTidalRadius: 5.5,
-  /** Pericenter as a fraction of the tidal radius (deep enough to fully shred). */
+  starShedRadius: 9.0,
+  planetShedRadius: 5.5,
+  /** Stretching starts this much further out than shedding does. */
+  stretchRadiusFactor: 1.5,
+  /** Pericenter as a fraction of the shed radius (deep enough to fully shred). */
   pericenterFraction: 0.7,
   /** Fractional mass-loss rate per second near pericenter (violent, one pass). */
   massLossBase: 0.9,
   /** Debris energy spread as a fraction of local circular speed, sets the
    * bound/unbound split (real TDEs eject roughly half the star). */
   energySpread: 0.35,
-  /** Bound-debris drag so returning streams eventually feed the disc. */
-  boundDrag: 0.02,
   /** A remnant that makes it back out past this radius has escaped. */
   escapeRadius: 30,
 };

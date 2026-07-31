@@ -92,6 +92,11 @@ export interface World {
   discBoost: number;
   /** Fractional particle-spawn accumulator. */
   spawnAcc: number;
+  /**
+   * Particles emitted per unit of shed mass (set when a body is placed). The
+   * spawn rule lives entirely in stepBody's mass loss; this only converts it.
+   */
+  particlesPerMass: number;
   /** Boost credited per absorbed particle (set when a body is placed). */
   feedPerParticle: number;
   /** Emission brightness for debris spawned by the current body. */

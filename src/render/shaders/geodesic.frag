@@ -148,6 +148,12 @@ vec4 discEmission(vec3 hit, vec3 marchDir) {
 // between the two cones is the real relativistic Doppler boost: an approaching
 // jet is beamed by delta^3, which is why one side of a real AGN is faint.
 const float JET_SPEED = 0.75;
+/** Emission per unit march length. The march crosses these volumes in dozens
+ *  of steps, so these are far below the disc's surface-emission scale. */
+const float JET_EMISSION = 5.0;
+const float JET_TWIST_RATE = 0.85;   // radians of braid per r_s of height
+const float JET_DRIFT_SPEED = 0.6;   // filaments crawling outward
+const float JET_NOISE_SCALE = 2.4;
 const float JET_BASE_RADIUS = 0.45;
 const float JET_OPENING = 0.10;
 const float JET_LENGTH = 30.0;
@@ -155,18 +161,21 @@ const float JET_FADE = 13.0;
 
 vec3 jetEmission(vec3 p, vec3 marchDir, float dt) {
   float height = abs(p.y);
-  if (uJetStrength <= 0.0 || height < 0.5 * uRs || height > JET_LENGTH * uRs) return vec3(0.0);
+  // Clamped to the escape sphere: past a merger uRs grows, and an unclamped
+  // reach would put the jet's tip outside the volume the march ever visits.
+  float reach = min(JET_LENGTH * uRs, R_ESCAPE);
+  if (uJetStrength <= 0.0 || height < 0.5 * uRs || height > reach) return vec3(0.0);
 
   float radius = uRs * (JET_BASE_RADIUS + JET_OPENING * height / uRs);
   float rho = length(p.xz);
   if (rho > radius) return vec3(0.0);
 
   // Twist the sampling plane with height: braided filaments, no atan seam.
-  float twist = height * 0.85 - uTime * 0.6;
+  float twist = height * JET_TWIST_RATE - uTime * JET_DRIFT_SPEED;
   float ct = cos(twist);
   float st = sin(twist);
   vec2 q = vec2(p.x * ct - p.z * st, p.x * st + p.z * ct);
-  float filaments = fbm2(q * 2.4 + vec2(0.0, height * 0.7));
+  float filaments = fbm2(q * JET_NOISE_SCALE + vec2(0.0, height * 0.7));
 
   float axis = 1.0 - rho / radius; // 1 on the axis, 0 at the cone wall
   // The collimation region right above the horizon is the brightest part.
@@ -181,7 +190,7 @@ vec3 jetEmission(vec3 p, vec3 marchDir, float dt) {
   float beaming = clamp(pow(delta, BEAM_EXP), 0.05, 6.0);
 
   vec3 tint = mix(vec3(0.38, 0.60, 1.0), vec3(0.86, 0.94, 1.0), axis);
-  return tint * density * beaming * uJetStrength * dt * 5.0;
+  return tint * density * beaming * uJetStrength * dt * JET_EMISSION;
 }
 
 // When a disruption dumps matter on the disc it goes super-Eddington, and
@@ -191,11 +200,14 @@ vec3 jetEmission(vec3 p, vec3 marchDir, float dt) {
 // disc is actually being fed, so `uWindStrength` is driven by the feed itself.
 const float WIND_REACH = 24.0;
 const float WIND_FADE = 8.0;
+/** Emission per unit march length, and it has to be small: at anything like
+ *  the disc's scale the wind fills the whole frame with orange fog. */
+const float WIND_EMISSION = 0.09;
 
 vec3 windEmission(vec3 p, float dt) {
   if (uWindStrength <= 0.0) return vec3(0.0);
   float r = length(p);
-  if (r < 2.0 * uRs || r > WIND_REACH * uRs) return vec3(0.0);
+  if (r < 2.0 * uRs || r > min(WIND_REACH * uRs, R_ESCAPE)) return vec3(0.0);
 
   // Bipolar cone: full strength on the axis, gone by roughly 45 degrees.
   float cone = smoothstep(0.72, 0.99, abs(p.y) / max(r, 1e-4));
@@ -208,17 +220,14 @@ vec3 windEmission(vec3 p, float dt) {
   clumps = smoothstep(0.34, 0.85, clumps);
 
   float density = cone * exp(-r / (WIND_FADE * uRs)) * clumps;
-  // The march crosses the cone in dozens of steps, so the per-step amount has
-  // to be small: at anything like the disc's emission scale the wind fills the
-  // whole frame with orange fog.
   vec3 tint = mix(vec3(1.0, 0.18, 0.05), vec3(1.0, 0.58, 0.26), clumps);
-  return tint * density * uWindStrength * dt * 0.09;
+  return tint * density * uWindStrength * dt * WIND_EMISSION;
 }
 
-// A body under tides is not an ellipsoid: it is drawn into a teardrop, a
-// bright head with a thin tail streaming toward the hole, which is the shape
-// every image of a disruption shows. Signed field in unit local coordinates,
-// negative inside, with +y pointing at the hole.
+// A body under tides is not an ellipsoid: it is drawn into a teardrop, a full
+// bulb trailing away from the hole and a thin tip pulled toward it, which is
+// the shape every image of a disruption shows. Signed field in unit local
+// coordinates, negative inside. +y is the near-hole tip throughout this file.
 const float TAIL_TAPER = 0.72;
 
 float teardropField(vec3 local) {
@@ -257,7 +266,7 @@ bool hitPlanet(vec3 a, vec3 b, out vec3 pos, out vec3 nrm, out vec3 local, out f
   vec3 entry = la + d * tEnter;
   if (teardropField(entry) < 0.0) {
     pos = mix(a, b, tEnter);
-    local = entry;
+    local = entry; // unit-sphere coords: +y is the near-hole tip
     nrm = teardropNormal(entry);
     tHit = tEnter;
     return true;
@@ -280,7 +289,7 @@ bool hitPlanet(vec3 a, vec3 b, out vec3 pos, out vec3 nrm, out vec3 local, out f
     }
     vec3 lp = la + d * inside;
     pos = mix(a, b, inside);
-    local = lp; // unit-sphere coords: +y is the end being pulled into the hole
+    local = lp; // unit-sphere coords: +y is the near-hole tip
     nrm = teardropNormal(lp);
     tHit = inside;
     return true;
@@ -290,8 +299,8 @@ bool hitPlanet(vec3 a, vec3 b, out vec3 pos, out vec3 nrm, out vec3 local, out f
 
 // A rocky body is lit by the disc's glow; a star lights itself. Tidal work is
 // done hardest on the end nearest the hole, so a shredding star runs white-hot
-// at the head and deep orange at the tail, with convection granulation sheared
-// along the stretch axis by the flow into the stream.
+// at the near-hole tip (+y) and deep orange at the trailing bulb, with
+// convection granulation sheared along the stretch axis by the flow.
 vec3 shadePlanet(vec3 pos, vec3 nrm, vec3 local) {
   vec3 toHole = normalize(-pos);
   float ndl = max(dot(nrm, toHole), 0.0);
@@ -314,10 +323,12 @@ vec3 shadePlanet(vec3 pos, vec3 nrm, vec3 local) {
 // Corona hugging the body, measured by the same teardrop field the surface
 // uses, so it tapers along the tail instead of ballooning around a fat
 // ellipsoid. Optically thin: it glows, it never occludes.
+const float CORONA_EMISSION = 0.05;
+
 vec3 coronaEmission(vec3 p, float dt) {
   if (uPlanetActive == 0 || uPlanetEmissive <= 0.0) return vec3(0.0);
   float outside = max(teardropField(uPlanetInvRot * (p - uPlanetPos) / uPlanetRadii), 0.0);
-  return uPlanetColor * uPlanetEmissive * 0.05 * dt * exp(-outside * outside * 6.0);
+  return uPlanetColor * uPlanetEmissive * CORONA_EMISSION * dt * exp(-outside * outside * 6.0);
 }
 
 void main() {

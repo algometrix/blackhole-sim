@@ -95,8 +95,8 @@ describe('debris pool', () => {
     pool.life[0] = 1;
     pool.flags[0] = 1;
 
-    // Drag is deliberately gentle, a debris orbit has to survive several laps
-    //, so the inward spiral shows over hundreds of seconds, not tens.
+    // Drag is deliberately gentle because a debris orbit has to survive several
+    // laps, so the inward spiral shows over hundreds of seconds, not tens.
     const startRadius = Math.hypot(5, 1.5, 0);
     let r = startRadius;
     for (let t = 0; t < 300 && pool.alive > 0; t += DT) {

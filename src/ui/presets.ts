@@ -22,8 +22,32 @@ export interface Preset {
   name: string;
   /** Hover text in the panel: what you are about to see. */
   description: string;
-  /** Look settings forced by this preset; everything else is left alone. */
-  look: Partial<Omit<Settings, 'sky'>> & { sky?: Partial<SkySettings> };
+  /**
+   * Look settings forced by this preset; everything else is left alone.
+   *
+   * Deliberately narrowed to the settings the frame loop reads every frame.
+   * Anything with a side effect behind it (quality, sound, photon paths) would
+   * need its callback re-fired, and a preset that set one would silently do
+   * nothing, so the type refuses it instead.
+   */
+  look: Partial<
+    Pick<
+      Settings,
+      | 'tdeMode'
+      | 'timeScale'
+      | 'gwTimeCompression'
+      | 'tdeTimeCompression'
+      | 'discEnabled'
+      | 'discBrightness'
+      | 'jetEnabled'
+      | 'jetStrength'
+      | 'windEnabled'
+      | 'windStrength'
+      | 'gridEnabled'
+      | 'gridOpacity'
+      | 'bloomStrength'
+    >
+  > & { sky?: Partial<SkySettings> };
   body: ({ kind: BodyKind } & Placement) | null;
   binary: Placement | null;
   camera: CameraPose;

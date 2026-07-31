@@ -22,15 +22,23 @@ export interface BodyStepResult {
 const scratch = new Vector3();
 
 /**
- * What fraction of the full shedding rate a merely *stretching* body spills.
+ * What fraction of the full shedding rate this body is losing right now. One
+ * function so the mass debited here and the particles spawned by world.ts can
+ * never drift apart.
  *
- * Expressed so the absolute rate is always `stretchSpillRate` (ramped by depth
- * past the tidal radius) whatever the mode's shedding rate is: a realistic TDE
- * sheds at 0.9 per second and a cinematic spiral at 0.08, and a fixed fraction
- * of the former would strip the star before it ever reached the shedding
- * radius. This is the thin leader of the stream, not the disruption.
+ * While merely stretching, a body still spills: tides have already beaten its
+ * self-gravity at the near tip, and that thin leader (still-intact body at one
+ * end, hole at the other) is the connecting stream every disruption image
+ * shows. The fraction is scaled by the mode's own shedding rate so the leader
+ * comes out at `stretchSpillRate` either way: a realistic TDE sheds at 0.9 per
+ * second against a cinematic spiral's 0.08, and a fixed fraction of the former
+ * would strip the star before it reached the shedding radius. `massLossRate`
+ * then applies its own radial ramp on top, so the leader thickens as the body
+ * falls, which is the intent.
  */
-export function spillFraction(r: number, body: Pick<Body, 'rTidal' | 'rShed' | 'lossBase'>): number {
+export function shedRateFraction(r: number, body: Pick<Body, 'phase' | 'rTidal' | 'rShed' | 'lossBase'>): number {
+  if (body.phase === 'shedding') return 1;
+  if (body.phase !== 'stretching') return 0;
   const span = Math.max(body.rTidal - body.rShed, 1e-6);
   const depth = Math.min(Math.max((body.rTidal - r) / span, 0), 1);
   return Math.min((BODY_TUNING.stretchSpillRate * depth) / Math.max(body.lossBase, 1e-6), 1);
@@ -55,17 +63,8 @@ export function stepBody(body: Body, dt: number, env: GravityEnv): BodyStepResul
   const blend = Math.min(1, dt / BODY_TUNING.stretchSmoothTime);
   body.stretch += (target - body.stretch) * blend;
 
-  // A body does not wait for full disruption to start losing mass. Once tides
-  // beat its self-gravity the near tip spills over, and that thin leader, 
-  // still-intact body at one end, hole at the other, is the connecting stream
-  // every disruption image shows. It ramps up with depth past the tidal radius
-  // until the body proper starts coming apart.
-  let massShed = 0;
-  if (body.phase === 'shedding') {
-    massShed = Math.min(body.mass, massLossRate(body.mass, r, body.rShed, body.lossBase) * dt);
-  } else if (body.phase === 'stretching') {
-    massShed = Math.min(body.mass, massLossRate(body.mass, r, body.rShed, body.lossBase) * dt * spillFraction(r, body));
-  }
+  const fullRate = massLossRate(body.mass, r, body.rShed, body.lossBase);
+  const massShed = Math.min(body.mass, fullRate * shedRateFraction(r, body) * dt);
   body.mass -= massShed;
 
   const torn = body.phase === 'stretching' || body.phase === 'shedding';

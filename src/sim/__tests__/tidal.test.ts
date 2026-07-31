@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { BODY_TUNING } from '../../config';
 import { massLossRate, nextPhase, phaseFor, stretchTarget } from '../tidal';
 
-// Fixed thresholds, not the shipped ones: this is the phase machine's
-// contract, and it must not change meaning when the art direction is retuned.
+// Fixed thresholds, not the shipped ones: this is the phase machine's contract
+// for the two radii it takes as parameters, so retuning them cannot change what
+// these assertions mean. (phaseFor still reads rConsume and massConsumed from
+// BODY_TUNING, so those two are exercised at their shipped values.)
 const rTidal = 7;
 const rShed = 4.5;
 const { massLossBase } = BODY_TUNING;

@@ -16,6 +16,7 @@
  */
 import { DEBRIS_TUNING } from '../config';
 import { vCircular, type GravityEnv } from './gravity';
+import { orbitOf, velocityOnOrbit } from './orbit';
 import { bodyRadius } from './body';
 import type { Body, DebrisPool } from './types';
 
@@ -26,6 +27,9 @@ export type Rng = () => number;
 const BALLISTIC_CULL_RADIUS = 60;
 
 const DEFAULT_ENV: GravityEnv = { rs: 1, bh2: null };
+
+/** Scratch for the spawn loop, which must not allocate per particle. */
+const launchVelocity = { x: 0, y: 0, z: 0 };
 
 export function createPool(capacity: number): DebrisPool {
   return {
@@ -99,25 +103,8 @@ export function spawnFromBody(
   const vCirc = vCircular(Math.max(r, 1.5 * rs), rs);
   const cinematicKick = spawnKick * vCirc;
 
-  // The star's orbit, as an orbit rather than as one velocity vector: its
-  // specific energy, its angular momentum, and the direction it is swinging.
-  // Debris is launched *onto this orbit* at its own radius. Copying the
-  // velocity vector instead gives a particle displaced a body-length inward
-  // the same speed but far less angular momentum, so the near half of every
-  // stream dives into the hole rather than swinging back out, the ribbon
-  // never forms.
-  const starSpeedSq = body.vel.lengthSq();
-  const starEnergy = 0.5 * starSpeedSq - rs / 2 / Math.max(r - rs, 1e-3);
-  const radialSpeed = body.vel.x * -dx + body.vel.y * -dy + body.vel.z * -dz;
-  const tanX = body.vel.x - radialSpeed * -dx;
-  const tanY = body.vel.y - radialSpeed * -dy;
-  const tanZ = body.vel.z - radialSpeed * -dz;
-  const tanSpeed = Math.max(Math.hypot(tanX, tanY, tanZ), 1e-9);
-  const tux = tanX / tanSpeed;
-  const tuy = tanY / tanSpeed;
-  const tuz = tanZ / tanSpeed;
-  const angularMomentum = r * tanSpeed;
-  const infalling = radialSpeed < 0 ? -1 : 1;
+  // Every particle is launched onto the body's own orbit at its own radius.
+  const orbit = orbitOf(body.pos, body.vel, rs);
   // Jitter across the strand, which is thin: a stretched body conserves
   // volume, so its lateral radius shrinks as 1/sqrt(stretch).
   const jitter = (spawnJitter * radius) / Math.sqrt(body.stretch);
@@ -158,18 +145,11 @@ export function spawnFromBody(
     const py = bp.y + side * dy * along + gaussian(rng) * jitter;
     const pz = bp.z + side * dz * along + gaussian(rng) * jitter;
 
-    // Same orbit, evaluated at this particle's radius: angular momentum sets
-    // the tangential speed, energy sets the total, the difference is radial.
     const rp = Math.max(Math.hypot(px, py, pz), 1.05 * rs);
-    const tangential = angularMomentum / rp;
-    const totalSq = 2 * (starEnergy + rs / 2 / Math.max(rp - rs, 1e-3));
-    const radial = infalling * Math.sqrt(Math.max(totalSq - tangential * tangential, 0));
-    const rux = px / rp;
-    const ruy = py / rp;
-    const ruz = pz / rp;
-    const vx = tux * tangential + rux * radial + kx + gaussian(rng) * 0.01;
-    const vy = tuy * tangential + ruy * radial + ky + gaussian(rng) * 0.01;
-    const vz = tuz * tangential + ruz * radial + kz + gaussian(rng) * 0.01;
+    velocityOnOrbit(orbit, px / rp, py / rp, pz / rp, rp, rs, launchVelocity);
+    const vx = launchVelocity.x + kx + gaussian(rng) * 0.01;
+    const vy = launchVelocity.y + ky + gaussian(rng) * 0.01;
+    const vz = launchVelocity.z + kz + gaussian(rng) * 0.01;
     pool.pos[i3] = px;
     pool.pos[i3 + 1] = py;
     pool.pos[i3 + 2] = pz;

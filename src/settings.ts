@@ -1,6 +1,6 @@
 /** UI-mutable settings: one plain object, read by sim and render each frame. */
 
-import { BODY_TUNING, GRID_TUNING, SKY_TUNING } from './config';
+import { BINARY_TUNING, BODY_TUNING, GRID_TUNING, SKY_TUNING } from './config';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
@@ -66,7 +66,7 @@ export function defaultSettings(): Settings {
     bloomStrength: 1.2,
     quality: 'medium',
     tdeMode: 'cinematic',
-    gwTimeCompression: 40,
+    gwTimeCompression: BINARY_TUNING.timeCompression,
     tdeTimeCompression: BODY_TUNING.timeCompression,
     soundEnabled: false,
     volume: 0.6,

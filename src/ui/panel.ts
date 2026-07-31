@@ -45,9 +45,9 @@ function explain(controller: Controller, text: string): Controller {
 }
 
 /**
- * A "reset this section" button. Restores the shipped defaults for the folder
- * it sits in, refreshes its controls, then lets the caller re-fire whatever
- * side effects those settings drive (a sky re-bake, a quality change, ...).
+ * A "reset this section" button. `restore` both writes the shipped defaults
+ * back and re-fires whatever side effects those settings drive (a sky re-bake,
+ * a quality change); this only repaints the folder afterwards.
  */
 function addResetButton(folder: GUI, restore: () => void, tooltip: string): void {
   const action = {
@@ -297,9 +297,10 @@ export function buildPanel(
   explain(
     render
       .add(settings, 'quality', ['low', 'medium', 'high'])
-      .name('Quality'),
+      .name('Quality')
+      .onChange(actions.onQualityChange),
     'Raymarch steps and internal resolution. It drops automatically if frames get slow.',
-  ).onChange(actions.onQualityChange);
+  );
   addResetButton(
     render,
     () => {
@@ -334,17 +335,17 @@ export function buildPanel(
   );
 
   if (debug) {
+    // Only knobs that are read live belong here. The body's own thresholds
+    // (tidal radius, shed radius, drag, mass-loss rate) are snapshotted into
+    // the Body when it is placed, so a slider for them would move nothing.
     const tuning = gui.addFolder('Tuning (debug)');
-    explain(tuning.add(BODY_TUNING, 'drag', 0, 0.1, 0.001).name('Body drag'), 'Velocity drag driving the cinematic inspiral.');
-    explain(tuning.add(BODY_TUNING, 'rTidal', 3, 10, 0.1).name('Tidal radius'), 'Where visible stretching begins.');
-    explain(tuning.add(BODY_TUNING, 'rShed', 2, 8, 0.1).name('Shed radius'), 'Where mass shedding begins.');
     explain(tuning.add(BODY_TUNING, 'stretchMax', 2, 30, 0.5).name('Max stretch'), 'Longest the body is drawn out.');
-    explain(tuning.add(BODY_TUNING, 'massLossBase', 0.01, 0.5, 0.005).name('Mass loss rate'), 'Fractional mass loss per second while shedding.');
-    explain(tuning.add(DEBRIS_TUNING, 'drag', 0, 0.3, 0.005).name('Debris drag'), 'How fast debris spirals inward.');
+    explain(tuning.add(DEBRIS_TUNING, 'drag', 0, 0.3, 0.005).name('Debris drag'), 'How fast debris circularizes and feeds the disc.');
     explain(tuning.add(DEBRIS_TUNING, 'planeSpring', 0, 3, 0.05).name('Plane spring'), 'How hard debris is pulled into the disc plane.');
     explain(tuning.add(DEBRIS_TUNING, 'planeDamping', 0, 4, 0.05).name('Plane damping'), 'Damping on that settling.');
-    explain(tuning.add(DEBRIS_TUNING, 'spawnJitter', 0, 1, 0.01).name('Spawn jitter'), 'Spread of debris around the body.');
-    explain(tuning.add(DEBRIS_TUNING, 'spawnKick', 0, 1, 0.01).name('Spawn kick'), 'Inward kick given to fresh debris.');
+    explain(tuning.add(DEBRIS_TUNING, 'spawnJitter', 0, 1, 0.01).name('Spawn jitter'), 'Spread of debris across the strand.');
+    explain(tuning.add(DEBRIS_TUNING, 'spawnKick', 0, 1, 0.01).name('Spawn kick'), 'Inward kick given to fresh cinematic-mode debris.');
+    explain(tuning.add(DEBRIS_TUNING, 'pointSize', 0.02, 0.8, 0.01).name('Debris size'), 'Sprite radius in world units; affects newly spawned particles.');
     explain(tuning.add(DISC_TUNING, 'boostDecayTau', 1, 30, 0.5).name('Boost decay tau'), 'How long a disc feeding boost lingers.');
     tuning.close();
   }

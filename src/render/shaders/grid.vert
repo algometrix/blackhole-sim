@@ -22,7 +22,7 @@ void main() {
 
   // Quadrupole radiation: two crests per turn, wound into the trailing spiral
   // by the retarded phase, with the 1/r falloff of a real strain amplitude.
-  float phi = atan(position.z, position.x + 1e-6);
+  float phi = atan(position.z, position.x);
   float ripple = uWaveAmp * sin(2.0 * phi - uWavePhase + uWaveNumber * r) / max(r, 1.5);
   y += ripple;
 

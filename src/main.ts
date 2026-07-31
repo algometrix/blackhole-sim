@@ -306,7 +306,6 @@ function syncPlanet(body: Body | null): void {
 // --- auto-degrade on sustained slow frames ---
 const frameTimes: number[] = [];
 let lastDegradeCheck = 0;
-let degradeNote = '';
 
 function maybeDegrade(now: number, frameMs: number): void {
   frameTimes.push(frameMs);
@@ -318,7 +317,7 @@ function maybeDegrade(now: number, frameMs: number): void {
   settings.quality = settings.quality === 'high' ? 'medium' : 'low';
   pipeline.setQuality(settings.quality);
   panel.refreshDisplays();
-  degradeNote = `quality lowered to ${settings.quality} (slow frames)`;
+  showTransientNote(`quality lowered to ${settings.quality} (slow frames)`);
   frameTimes.length = 0;
 }
 
@@ -361,7 +360,6 @@ function updateHud(now: number, fps: number): void {
   else if (settings.photonsEnabled) lines.push('click to launch photons');
   if (aimInfo) lines.push(aimInfo);
   if (now < transientUntil) lines.push(transientNote);
-  if (degradeNote) lines.push(degradeNote);
   hud.textContent = lines.join('\n');
 }
 
