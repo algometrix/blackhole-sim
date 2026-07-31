@@ -7,6 +7,10 @@
 [![Tests](https://img.shields.io/badge/tests-51%20passing-brightgreen)](src/sim/__tests__)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+### [Open it in your browser](https://algometrix.github.io/blackhole-sim/)
+
+No install, no account. It needs WebGL2, which every current desktop browser has.
+
 An interactive black hole visualizer that ray-traces **real Schwarzschild photon geodesics on the GPU**, per pixel, every frame. It renders the event horizon shadow, the photon ring, a Doppler-beamed accretion disc bent over and under the hole (the *Interstellar* look), and a gravitationally lensed starfield. You can launch photons and watch their true paths, drop a planet or star and watch it be tidally shredded, and place a second black hole to watch a gravitational-wave inspiral end in a merger, complete with a LIGO-style audio chirp.
 
 Everything runs in the browser. No backend, no textures, no libraries beyond Three.js: the stars, disc, physics, and sound are all procedural.
