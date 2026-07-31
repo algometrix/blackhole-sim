@@ -139,6 +139,7 @@ npm run preview    # serve the production build
 | Sound | **Sound → Enabled** (browsers require one click on the page first) |
 | Change the sky | **Deep sky** folder: star density, nebulae, galaxies, or reseed the whole thing |
 | Art-direction knobs | append `?debug=1` to the URL for the hidden tuning folder |
+| On a phone | the panel is a bottom sheet: tap its bar to open it, and the eye button hides the whole interface. Quality starts at `low` and the render resolution is capped, because a phone GPU is roughly a tenth of a desktop card at three times the pixel density. |
 
 Every control carries a hover description, and each folder has a reset button.
 

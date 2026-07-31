@@ -2,6 +2,10 @@
  * Cinematic mode: the control panel and HUD fade away so the render fills the
  * screen like a wallpaper. One class on <body> drives the CSS; a toast (which
  * stays visible in either mode) says how to get the controls back.
+ *
+ * On a touch device the same state is driven by a floating button instead of
+ * the H key, and that button is deliberately the one piece of interface that
+ * never fades: with no keyboard there has to be a way back.
  */
 
 const CINEMATIC_CLASS = 'cinematic';
@@ -14,6 +18,8 @@ export class CinematicMode {
   constructor(
     private readonly body: HTMLElement,
     private readonly toast: HTMLElement,
+    /** How the user gets the interface back, in their own input terms. */
+    private readonly restoreHint: string,
   ) {}
 
   /** True while the panel and HUD are hidden. */
@@ -41,7 +47,7 @@ export class CinematicMode {
 
   private apply(): void {
     this.body.classList.toggle(CINEMATIC_CLASS, this.hidden);
-    this.flash(this.hidden ? 'cinematic mode · press H for the controls' : 'controls restored');
+    this.flash(this.hidden ? `cinematic mode · ${this.restoreHint}` : 'controls restored');
   }
 
   private flash(message: string): void {

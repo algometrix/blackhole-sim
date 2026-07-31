@@ -23,6 +23,7 @@ import { nextWaveState, restingWave } from './sim/gravitationalWave';
 import { clearBody, createWorld, placeBinary, placeBody, resetScene, stepWorld } from './sim/world';
 import type { Body } from './sim/types';
 import { CinematicMode, isTypingIntoControl } from './ui/chrome';
+import { isMobile, mobileRenderBudget } from './ui/device';
 import { buildPanel } from './ui/panel';
 import type { Preset } from './ui/presets';
 import { PlacementController } from './ui/placement';
@@ -57,6 +58,15 @@ function requireElement(id: string): HTMLElement {
 const app = requireElement('app');
 const hud = requireElement('hud');
 const toast = requireElement('toast');
+const chromeToggle = requireElement('chrome-toggle');
+
+// A finger-driven, small screen gets a different layout and a smaller render
+// budget. Decided once at boot: a phone does not become a desktop mid-session,
+// and re-laying-out the panel on every orientation change would be worse than
+// the sizes being slightly off in landscape.
+const mobile = isMobile();
+if (mobile) document.body.classList.add('touch-ui');
+const budget = mobileRenderBudget();
 
 const renderer = new THREE.WebGLRenderer({
   antialias: false,
@@ -66,13 +76,14 @@ if (!renderer.capabilities.isWebGL2) {
   hud.textContent = 'This visualizer needs WebGL2, which this browser does not provide.';
   throw new Error('WebGL2 required');
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, mobile ? budget.pixelRatio : 2));
 app.appendChild(renderer.domElement);
 
 const settings = defaultSettings();
+if (mobile) settings.quality = 'low';
 const world = createWorld();
 
-const starfield = new Starfield(renderer, settings.sky);
+const starfield = new Starfield(renderer, settings.sky, mobile ? budget.skyFaceSize : undefined);
 const rig = new CameraRig(window.innerWidth / window.innerHeight, renderer.domElement);
 const bhPass = new BlackHolePass(starfield.texture, settings.quality);
 const pipeline = new RenderPipeline(renderer, rig.camera, bhPass, settings.quality);
@@ -134,7 +145,18 @@ const aiming = new AimingController(
   },
 );
 
-const cinematic = new CinematicMode(document.body, toast);
+const cinematic = new CinematicMode(
+  document.body,
+  toast,
+  mobile ? 'tap the button to bring them back' : 'press H for the controls',
+);
+chromeToggle.addEventListener('click', () => {
+  cinematic.toggle();
+  chromeToggle.setAttribute(
+    'aria-label',
+    cinematic.isActive ? 'Show the interface' : 'Hide the interface',
+  );
+});
 
 /** A re-bake invalidates the converged idle frame, so accumulation restarts. */
 function rebakeSky(): void {
@@ -224,7 +246,7 @@ const panel = buildPanel(
       rebakeSky();
     },
   },
-  new URLSearchParams(window.location.search).has('debug'),
+  { debug: new URLSearchParams(window.location.search).has('debug'), compact: mobile },
 );
 audio.setVolume(settings.volume);
 

@@ -65,12 +65,34 @@ export interface ControlPanel {
   refreshDisplays(): void;
 }
 
+export interface PanelOptions {
+  /** Show the hidden art-direction folder (`?debug=1`). */
+  debug: boolean;
+  /**
+   * Phone layout: the panel is a bottom sheet, so it starts collapsed to its
+   * title bar. Opening it covers most of a phone screen, which is fine when
+   * asked for and intolerable by default.
+   */
+  compact: boolean;
+}
+
 export function buildPanel(
   settings: Settings,
   actions: PanelActions,
-  debug: boolean,
+  { debug, compact }: PanelOptions,
 ): ControlPanel {
-  const gui = new GUI({ title: 'Black Hole  ·  H hides this' });
+  const gui = new GUI({ title: 'Black Hole' });
+  if (compact) {
+    // The title bar is the only thing on screen while the sheet is shut, so it
+    // has to say what tapping it does, and stay honest once it is open.
+    const describeState = (): void => {
+      gui.title(gui._closed ? 'Black Hole  ·  tap to open' : 'Black Hole  ·  tap to close');
+    };
+    gui.onOpenClose(describeState);
+    describeState();
+  } else {
+    gui.title('Black Hole  ·  H hides this');
+  }
   const shipped = defaultSettings();
 
   const presets = gui.addFolder('0 · Presets');
@@ -154,8 +176,8 @@ export function buildPanel(
     'Ends the flight and hands the camera back to mouse control.',
   );
   explain(
-    camera.add(actions, 'toggleCinematic').name('Hide the interface (H)'),
-    'Cinematic mode: fades this panel and the readout for a clean, wallpaper-like frame. Press H again to bring them back.',
+    camera.add(actions, 'toggleCinematic').name(compact ? 'Hide the interface' : 'Hide the interface (H)'),
+    'Cinematic mode: fades this panel and the readout for a clean, wallpaper-like frame.',
   );
   camera.close();
 
@@ -311,6 +333,14 @@ export function buildPanel(
     'Default glow and quality preset.',
   );
   render.close();
+
+  if (compact) {
+    // Presets are the one folder worth having open on a phone: they are the
+    // fastest way to something worth looking at.
+    scene.close();
+    playback.close();
+    gui.close();
+  }
 
   const refreshDisplays = (): void => {
     gui.controllersRecursive().forEach((controller) => controller.updateDisplay());

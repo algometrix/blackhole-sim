@@ -26,8 +26,11 @@ export class Starfield {
   constructor(
     private readonly renderer: THREE.WebGLRenderer,
     sky: SkySettings,
+    /** Smaller on phones: six faces of a heavy noise shader at full size is a
+     *  visible stall on a mobile GPU, and the stars are tiny there anyway. */
+    faceSize: number = SKY_TUNING.faceSize,
   ) {
-    this.target = new THREE.WebGLCubeRenderTarget(SKY_TUNING.faceSize, {
+    this.target = new THREE.WebGLCubeRenderTarget(faceSize, {
       type: THREE.HalfFloatType,
       generateMipmaps: false,
     });
