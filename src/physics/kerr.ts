@@ -56,7 +56,7 @@ export function innerHorizonRadius(spin: number): number {
  * Innermost stable circular orbit, the disc's inner edge (Bardeen, Press and
  * Teukolsky 1972, eq. 2.21).
  *
- * spin 0 -> 3.0 r_s = R_ISCO for both senses; spin 0.998 prograde -> 0.6184;
+ * spin 0 -> 3.0 r_s = R_ISCO for both senses; spin 0.998 prograde -> 0.61849;
  * spin 1 prograde -> M = 0.5, retrograde -> 9M = 4.5.
  */
 export function innermostStableCircularOrbit(spin: number, sense: OrbitSense): number {
@@ -72,7 +72,7 @@ export function innermostStableCircularOrbit(spin: number, sense: OrbitSense): n
  * Schwarzschild photon sphere into two: the prograde one is dragged inward
  * toward the horizon, the retrograde one pushed out.
  *
- * spin 0 -> 1.5 = R_PHOTON for both senses; spin 0.998 -> 0.5366 prograde and
+ * spin 0 -> 1.5 = R_PHOTON for both senses; spin 0.998 -> 0.53695 prograde and
  * 1.9991 retrograde; spin 1 -> M = 0.5 prograde and 4M = 2.0 retrograde.
  */
 export function circularPhotonOrbitRadius(spin: number, sense: OrbitSense): number {
@@ -89,7 +89,7 @@ export function circularPhotonOrbitRadius(spin: number, sense: OrbitSense): numb
  * Solving R(r) = R'(r) = 0 for the equatorial null radial potential gives
  * b = a +- 2 r sqrt(Delta) / (r - M) at r = r_photon.
  *
- * spin 0 -> +-3*sqrt(3)*M = +-B_CRIT; spin 0.998 -> +1.033 and -3.498;
+ * spin 0 -> +-3*sqrt(3)*M = +-B_CRIT; spin 0.998 -> +1.05544 and -3.498;
  * spin 1 retrograde -> -7M = -3.5.
  *
  * Prograde at exactly spin = 1 is degenerate: r_photon, r+ and M all coincide,

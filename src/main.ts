@@ -25,7 +25,12 @@ import { RenderPipeline, type AccumMode } from './render/pipeline';
 import { SpacetimeGrid } from './render/spacetimeGrid';
 import { Starfield } from './render/starfield';
 import { defaultSettings } from './settings';
-import { observeBeacon, releasePoint, type BeaconObservables } from './sim/beacon';
+import {
+  imagePosition,
+  observeBeacon,
+  releasePoint,
+  type BeaconObservables,
+} from './sim/beacon';
 import { displayRs, orbitalOmegaWall } from './sim/binary';
 import { bodyScale } from './sim/body';
 import { nextWaveState, restingWave } from './sim/gravitationalWave';
@@ -398,8 +403,11 @@ function syncSpin(): void {
   const available = world.binary === null;
   if (available !== spinWasAvailable) {
     spinWasAvailable = available;
-    panel.setSpinAvailable(available);
+    if (available) panel.enableSpin();
+    else panel.disableSpin();
     if (!available && settings.spin > 0) {
+      settings.spin = 0;
+      panel.refreshDisplays();
       showTransientNote('spin is modelled for a single hole, so it was set to 0');
     }
   }
@@ -419,6 +427,9 @@ function syncImageOrderTint(): void {
 }
 
 // --- infalling beacon sync (scratch object, no per-frame allocation) ---
+/** Scratch for the hole-to-camera direction; never allocated per frame. */
+const toCameraDirection = new THREE.Vector3();
+
 const beaconState: BeaconState = {
   pos: new THREE.Vector3(),
   radius: BEACON_TUNING.radius,
@@ -441,7 +452,9 @@ function syncBeacon(view: BeaconObservables | null, viewportHeight: number): voi
   }
   // Drawn at the apparent radius, not the coordinate radius: near the horizon
   // the image piles up on the photon ring instead of sinking into the shadow.
-  beaconState.pos.copy(beacon.direction).multiplyScalar(view.apparentRadius);
+  // The radius is an impact parameter, so it is applied in the sky plane.
+  toCameraDirection.copy(rig.camera.position).normalize();
+  imagePosition(beacon.direction, toCameraDirection, view.apparentRadius, beaconState.pos);
   beaconState.radius = BEACON_TUNING.radius * beacon.horizonRs;
   beaconState.redshift = view.redshift;
   beaconState.brightness = BEACON_TUNING.emission * settings.beaconBrightness;

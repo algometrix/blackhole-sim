@@ -131,7 +131,7 @@ export const PRESETS: readonly Preset[] = [
     id: 'kerr',
     name: 'Spinning hole (Kerr)',
     description:
-      'A near-extremal hole seen almost edge on. The shadow is visibly D shaped, the bright ring is dragged tight against the horizon on the approaching side, and the disc runs all the way down to 0.62 rₛ.',
+      'A near-extremal hole seen almost edge on. The shadow is visibly D shaped, the bright ring is dragged tight against the horizon on the approaching side, and the disc runs down to 0.97 rₛ, a third of the way in from the 3 rₛ a still hole allows.',
     look: { spin: 0.95, discEnabled: true, discBrightness: 1.1, jetEnabled: false, gridEnabled: false, bloomStrength: 1.0 },
     body: null,
     binary: null,
@@ -147,7 +147,10 @@ export const PRESETS: readonly Preset[] = [
     // Disc dimmed and outflow off: the probe ends up on the shadow rim, where
     // the inner disc and the photon ring are the brightest things in frame,
     // and by then it is nine decades fainter than it started.
-    look: { discEnabled: true, discBrightness: 0.5, jetEnabled: false, windEnabled: false, gridEnabled: false, timeScale: 1, beaconTimeCompression: 3, beaconBrightness: 3.5, bloomStrength: 1.3 },
+    // spin 0 on purpose: the probe integrates a Schwarzschild radial geodesic
+    // anchored to r_s, so demonstrating it against a dragged horizon would be
+    // showing one solution inside another spacetime.
+    look: { spin: 0, discEnabled: true, discBrightness: 0.5, jetEnabled: false, windEnabled: false, gridEnabled: false, timeScale: 1, beaconTimeCompression: 3, beaconBrightness: 3.5, bloomStrength: 1.3 },
     body: null,
     binary: null,
     beacon: { radius: 7, angle: 0.9 },

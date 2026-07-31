@@ -133,6 +133,12 @@ export const DISC_TUNING = {
 
 export const LIGHT_CURVE_TUNING = {
   /**
+   * Recording stops once the boost falls below this fraction of the flare's
+   * own peak. Without a stop the ring fills with post-flare zeros and starts
+   * decimating the event itself to make room for them.
+   */
+  fadedFraction: 0.002,
+  /**
    * Sampling period on the *disruption clock* (see the two-clocks note at the
    * top of this file), so the recorded shape does not change when the
    * Disruption speed slider does. Two disruption-seconds is fine enough to

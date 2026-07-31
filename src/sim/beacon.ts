@@ -249,6 +249,46 @@ export function apparentImageRadius(r: number, rs: number): number {
 }
 
 /**
+ * How far toward the camera the image is lifted, as a fraction of its own
+ * apparent radius. The overlay pass hides fragments lying beyond the hole, and
+ * an image whose whole point is that it sits outside the shadow must never be
+ * eaten by that test.
+ */
+const IMAGE_LIFT = 0.35;
+
+/**
+ * Where to draw the probe's image, in world space.
+ *
+ * `apparentImageRadius` is an impact parameter: a distance measured in the sky
+ * plane, perpendicular to the line of sight. Placing the sprite that far along
+ * the probe's own direction is only right when the probe happens to sit side
+ * on to the camera. Once it swings behind the hole, that placement drops the
+ * image into the middle of the shadow, which is the one place an escaping
+ * photon can never come from.
+ *
+ * So the direction is projected into the sky plane first, and the radius is
+ * applied there. The projected offset from the hole's centre is then exactly
+ * the impact parameter, whatever the viewing geometry.
+ */
+export function imagePosition(
+  direction: Vector3,
+  toCamera: Vector3,
+  apparentRadius: number,
+  out: Vector3,
+): Vector3 {
+  const alongView = direction.dot(toCamera);
+  out.copy(direction).addScaledVector(toCamera, -alongView);
+  if (out.lengthSq() < 1e-10) {
+    // Dead in line with the hole, so every azimuth on the ring is equally
+    // right. Pick a stable one instead of dividing by zero.
+    out.set(-toCamera.y, toCamera.x, 0);
+    if (out.lengthSq() < 1e-10) out.set(1, 0, 0);
+  }
+  out.normalize().multiplyScalar(apparentRadius);
+  return out.addScaledVector(toCamera, apparentRadius * IMAGE_LIFT);
+}
+
+/**
  * Where a click on the disc plane releases the probe: same azimuth, same
  * radius, lifted out of the plane by `BEACON_TUNING.inclination`.
  *

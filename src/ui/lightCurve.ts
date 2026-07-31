@@ -194,11 +194,31 @@ export function recordFeeding(curve: FlareCurve, { disruptionDt, boost }: Feedin
   curve.elapsed += disruptionDt;
   if (curve.elapsed - curve.lastSampleAt < curve.interval) return;
 
+  // Stop once the flare is over. Left running, the ring fills with post-flare
+  // zeros and then decimates the real curve to make room for them, so the
+  // longer you leave the scene alone the coarser the record of the event gets.
+  if (curve.count > 0 && hasFaded(curve, boost)) {
+    curve.recording = false;
+    return;
+  }
+
   if (curve.count === curve.capacity) halveResolution(curve);
   curve.time[curve.count] = curve.elapsed;
   curve.boost[curve.count] = boost;
   curve.count += 1;
   curve.lastSampleAt = curve.elapsed;
+}
+
+/**
+ * True once the boost has sat far below its own peak for long enough that
+ * nothing is coming back. The threshold is a fraction of the peak rather than
+ * an absolute number, because the peak height depends on the body and the mode.
+ */
+function hasFaded(curve: FlareCurve, boost: number): boolean {
+  let peak = 0;
+  for (let i = 0; i < curve.count; i++) peak = Math.max(peak, curve.boost[i]!);
+  if (peak <= 0) return false;
+  return boost < LIGHT_CURVE_TUNING.fadedFraction * peak;
 }
 
 /**

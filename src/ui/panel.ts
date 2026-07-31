@@ -81,7 +81,9 @@ export interface ControlPanel {
    * second hole in the scene takes the control away rather than letting the
    * user set a value the renderer will silently ignore.
    */
-  setSpinAvailable(available: boolean): void;
+  /** Spin is a one-hole solution, so the control is disabled while a second hole is in the scene. */
+  enableSpin(): void;
+  disableSpin(): void;
 }
 
 export interface PanelOptions {
@@ -276,7 +278,7 @@ export function buildPanel(
   );
   explain(
     lightCurve.add(settings, 'lightCurveFallbackReference').name('Reference law (t^-5/3)'),
-    'Draws the classic fallback law through the peak of the recorded curve: bound debris returns at a rate proportional to t^(-5/3), which is how real tidal disruption flares are identified. It is anchored at the peak and never fitted, because this simulation does not reproduce the law and the gap is the interesting part. Its debris is dragged into the disc on a fixed timescale instead of returning on its own orbits, and the feeding glow has a decay time of its own, so the recorded curve falls off several times faster and its slope moves with the Disruption speed slider. See part 11 of docs/THEORY.md.',
+    'Draws the classic fallback law through the peak of the recorded curve: bound debris returns at a rate proportional to t^(-5/3), which is how real tidal disruption flares are identified. It is anchored at the peak and never fitted, because this simulation does not reproduce the law and the gap is the interesting part. Its debris is dragged into the disc on a fixed timescale instead of returning on its own orbits, and the feeding glow has a decay time of its own, so the recorded curve falls off far more steeply, and how steeply depends on the Disruption speed slider (roughly -12 at its slowest, -3 at its fastest). The caption prints the live fit next to the law so you can see the gap rather than take this on trust. See part 11 of docs/THEORY.md.',
   );
   lightCurve.close();
 
@@ -472,11 +474,14 @@ export function buildPanel(
     tuning.close();
   }
 
-  const setSpinAvailable = (available: boolean): void => {
-    if (available) spinController.enable();
-    else spinController.disable();
-    spinController.domElement.title = available ? SPIN_TOOLTIP : SPIN_UNAVAILABLE_TOOLTIP;
+  const enableSpin = (): void => {
+    spinController.enable();
+    spinController.domElement.title = SPIN_TOOLTIP;
+  };
+  const disableSpin = (): void => {
+    spinController.disable();
+    spinController.domElement.title = SPIN_UNAVAILABLE_TOOLTIP;
   };
 
-  return { gui, refreshDisplays, setSpinAvailable };
+  return { gui, refreshDisplays, enableSpin, disableSpin };
 }
