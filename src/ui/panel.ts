@@ -11,9 +11,20 @@
  */
 import GUI, { type Controller } from 'lil-gui';
 import { BODY_TUNING, DEBRIS_TUNING, DISC_TUNING } from '../config';
+import { A_STAR_MAX } from '../physics/constants';
 import { defaultSettings, type QualityPreset, type Settings } from '../settings';
 import type { TourKind } from '../render/cameraTour';
 import { PRESETS, type Preset } from './presets';
+
+/**
+ * The numbers quoted here are asserted in physics/__tests__/kerr.test.ts, so
+ * the tooltip cannot drift away from what the app actually renders.
+ */
+const SPIN_TOOLTIP =
+  'How fast the hole turns, as a fraction of the fastest it can. 0 is a still hole and gives the classic image. Turn it up and the hole drags space around with it: the shadow goes lopsided, with its prograde edge pulled in to 1.06 rₛ while the far edge swings out to 3.50 rₛ, the horizon shrinks from 1 rₛ to 0.53 rₛ, and the disc’s inner edge follows the last stable orbit in from 3 rₛ to 0.62 rₛ, so the inner disc runs hotter and much faster. 0.998 is the Thorne limit, the fastest a hole fed by a disc can spin, because the last photons it swallows spin it back down. Spin roughly doubles the cost of a frame.';
+
+const SPIN_UNAVAILABLE_TOOLTIP =
+  'Two holes are superposed rather than solved, and there is no spinning version of that, so spin is off while a second hole is in the scene.';
 
 export interface PanelActions {
   placePlanet(): void;
@@ -63,6 +74,12 @@ export interface ControlPanel {
   gui: GUI;
   /** Repaint every control from the settings object it is bound to. */
   refreshDisplays(): void;
+  /**
+   * Enable or disable the spin slider. Kerr is a single-hole solution, so a
+   * second hole in the scene takes the control away rather than letting the
+   * user set a value the renderer will silently ignore.
+   */
+  setSpinAvailable(available: boolean): void;
 }
 
 export interface PanelOptions {
@@ -176,10 +193,34 @@ export function buildPanel(
     'Ends the flight and hands the camera back to mouse control.',
   );
   explain(
+    camera.add(settings, 'cameraBoostEnabled').name('Relativistic view'),
+    'Applies the real optics of a fast camera while a flight is running. The star field bunches toward the direction of travel, the sky ahead blueshifts and brightens, the sky behind reddens and dims, and the shadow itself shifts with them. Nothing changes while you orbit with the mouse: that camera is being repositioned, not flown.',
+  );
+  explain(
+    camera.add(settings, 'cameraBoostStrength', 0, 1, 0.05).name('Flight speed'),
+    'Fraction of the flight’s real speed the optics are computed from. At 1 you get the speed the move would actually have: about 0.33c circling at 5.5 rₛ, 0.41c at the closest point of a fly past, and up to 0.95c at the end of a plunge. At 0.5 you see the same flight at half that speed, and at 0 the effect is exactly off.',
+  );
+  explain(
     camera.add(actions, 'toggleCinematic').name(compact ? 'Hide the interface' : 'Hide the interface (H)'),
     'Cinematic mode: fades this panel and the readout for a clean, wallpaper-like frame.',
   );
   camera.close();
+
+  // Above the disc folder because spin moves the disc's inner edge: this is
+  // the control that decides where the gas is allowed to start.
+  const hole = gui.addFolder('Black hole');
+  const spinController = explain(
+    hole.add(settings, 'spin', 0, A_STAR_MAX, 0.002).name('Spin (a/M)'),
+    SPIN_TOOLTIP,
+  );
+  addResetButton(
+    hole,
+    () => {
+      settings.spin = shipped.spin;
+    },
+    'Back to a still, non-spinning hole.',
+  );
+  hole.close();
 
   const disc = gui.addFolder('Accretion disc');
   explain(
@@ -298,6 +339,14 @@ export function buildPanel(
     'Angular width of the fan. A narrow fan near the critical impact parameter shows rays splitting between capture and escape.',
   );
   explain(paths.add(actions, 'clearPaths').name('Clear rays'), 'Removes every drawn ray.');
+  explain(
+    paths.add(settings, 'imageOrderTintEnabled').name('Tint image orders'),
+    'Diagnostic overlay. Colours the disc by how far the light wound around the hole before it reached you: blue is the direct view, amber is light that came round the far side once, magenta is the photon ring, two or more half turns. Only the hue changes, the brightness is left alone.',
+  );
+  explain(
+    paths.add(settings, 'imageOrderTintStrength', 0, 1, 0.05).name('Tint strength'),
+    'How far the disc colour is pushed toward the diagnostic hue. 0 leaves the disc alone, 1 replaces its colour entirely and keeps its brightness. The second-order band is thinner than a pixel at normal framing, so pause and let the frame settle to see it.',
+  );
   paths.close();
 
   const sound = gui.addFolder('Sound');
@@ -379,5 +428,12 @@ export function buildPanel(
     explain(tuning.add(DISC_TUNING, 'boostDecayTau', 1, 30, 0.5).name('Boost decay tau'), 'How long a disc feeding boost lingers.');
     tuning.close();
   }
-  return { gui, refreshDisplays };
+
+  const setSpinAvailable = (available: boolean): void => {
+    if (available) spinController.enable();
+    else spinController.disable();
+    spinController.domElement.title = available ? SPIN_TOOLTIP : SPIN_UNAVAILABLE_TOOLTIP;
+  };
+
+  return { gui, refreshDisplays, setSpinAvailable };
 }

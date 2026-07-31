@@ -4,7 +4,8 @@
  * renders here. Output alpha is the horizon mask.
  */
 import * as THREE from 'three';
-import { glslDefineMap } from '../physics/constants';
+import { M, glslDefineMap } from '../physics/constants';
+import { horizonRadius } from '../physics/kerr';
 import type { QualityPreset } from '../settings';
 import { FullscreenPass } from './fullscreenPass';
 import geodesicFrag from './shaders/geodesic.frag';
@@ -27,8 +28,22 @@ export interface DiscState {
   brightness: number;
 }
 
+/** The primary hole: its size and how fast it turns. */
+export interface PrimaryState {
+  /** Schwarzschild radius, world units (animated during merger/ringdown). */
+  rs: number;
+  /** Dimensionless Kerr spin a/M in [0, A_STAR_MAX]; 0 is Schwarzschild. */
+  spin: number;
+}
+
 const QUALITY_STEPS: Record<QualityPreset, number> = { low: 128, medium: 256, high: 420 };
 
+/**
+ * A non-zero spin and an active secondary are mutually exclusive: the Kerr
+ * branch in the shader solves one hole exactly and has no superposition. The
+ * simulation enforces it (`setPrimarySpin` forces 0 while a binary exists),
+ * so this pass only has to stay consistent with what it is handed.
+ */
 export class BlackHolePass {
   private readonly pass: FullscreenPass;
   private readonly uniforms: Record<string, THREE.IUniform>;
@@ -37,6 +52,7 @@ export class BlackHolePass {
     this.uniforms = {
       uCamPos: { value: new THREE.Vector3() },
       uCamBasis: { value: new THREE.Matrix3() },
+      uCamBeta: { value: new THREE.Vector3() },
       uTanHalfFov: { value: 1 },
       uAspect: { value: 1 },
       uResolution: { value: new THREE.Vector2(1, 1) },
@@ -44,6 +60,8 @@ export class BlackHolePass {
       uTime: { value: 0 },
       uSky: { value: skyTexture },
       uRs: { value: 1 },
+      uKerrA: { value: 0 },
+      uHorizonR: { value: 1 },
       uBh2Active: { value: 0 },
       uBh2Pos: { value: new THREE.Vector3() },
       uBh2Rs: { value: 0.3 },
@@ -52,6 +70,7 @@ export class BlackHolePass {
       uDiscBrightness: { value: 1 },
       uJetStrength: { value: 0 },
       uWindStrength: { value: 0 },
+      uImageOrderTint: { value: 0 },
       uPlanetActive: { value: 0 },
       uPlanetPos: { value: new THREE.Vector3() },
       uPlanetRadii: { value: new THREE.Vector3(1, 1, 1) },
@@ -78,9 +97,24 @@ export class BlackHolePass {
     this.applyDefines(quality);
   }
 
-  /** Primary Schwarzschild radius (animated during merger/ringdown). */
-  setPrimaryRs(rs: number): void {
-    this.uniforms.uRs!.value = rs;
+  /**
+   * Size and spin of the primary, in one call because the three uniforms they
+   * drive are derived from each other and must never disagree: a horizon that
+   * does not match the spin puts the capture test in the wrong place.
+   */
+  setPrimary(primary: PrimaryState): void {
+    this.uniforms.uRs!.value = primary.rs;
+    this.uniforms.uKerrA!.value = primary.spin * M * primary.rs;
+    this.uniforms.uHorizonR!.value = horizonRadius(primary.spin) * primary.rs;
+  }
+
+  /**
+   * Camera velocity in units of c, world frame. Not folded into
+   * updateCamera(), which is driven from the camera matrix inside
+   * pipeline.render() and knows nothing about the tour.
+   */
+  setCameraBeta(beta: THREE.Vector3): void {
+    (this.uniforms.uCamBeta!.value as THREE.Vector3).copy(beta);
   }
 
   setSecondary(bh2: { pos: THREE.Vector3; rs: number } | null): void {
@@ -107,6 +141,15 @@ export class BlackHolePass {
   /** Super-Eddington outflow; 0 removes it from the march entirely. */
   setWindStrength(strength: number): void {
     this.uniforms.uWindStrength!.value = strength;
+  }
+
+  /**
+   * Image-order diagnostic overlay. 0 removes the winding accumulation from
+   * the march entirely, mirroring setJetStrength/setWindStrength, and it is a
+   * uniform rather than a define so toggling never recompiles the program.
+   */
+  setImageOrderTint(strength: number): void {
+    this.uniforms.uImageOrderTint!.value = strength;
   }
 
   setPlanet(planet: PlanetState | null): void {

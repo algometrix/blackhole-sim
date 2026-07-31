@@ -31,8 +31,10 @@ the summary, jump to [the table at the end](#every-equation-and-where-it-lives).
 12. [Gravitational waves and the chirp](#12-gravitational-waves-and-the-chirp)
 13. [The funnel: what curved space actually means](#13-the-funnel-what-curved-space-actually-means)
 14. [Jets, beaming, and the outflow](#14-jets-beaming-and-the-outflow)
-15. [What we cheat on](#15-what-we-cheat-on)
-16. [Every equation and where it lives](#every-equation-and-where-it-lives)
+15. [Flying fast: what the sky does](#15-flying-fast-what-the-sky-does)
+16. [Spin, and what it drags](#16-spin-and-what-it-drags)
+17. [What we cheat on](#17-what-we-cheat-on)
+18. [Every equation and where it lives](#every-equation-and-where-it-lives)
 
 ---
 
@@ -244,7 +246,35 @@ Just outside that edge sits the **photon ring**, the bright thin circle in
 every image, made of light that looped one or more times before escaping to
 your eye.
 
-> **In the code:** `B_CRIT` and `R_PHOTON` in `src/physics/constants.ts`.
+### Which loop am I looking at?
+
+The ring is not one image, it is a stack of them, and you can label them. Let
+$\Phi$ be the total angle the ray sweeps about the hole on its way to you:
+
+$$\Phi = \int \frac{\lvert \mathbf{x} \times d\mathbf{x} \rvert}{r^2}, \qquad n = \left\lfloor \Phi / \pi \right\rfloor$$
+
+$n = 0$ is the **direct** image, what you would see if light went straight.
+$n = 1$ is light that came round the far side once. $n \ge 2$ is the photon
+ring proper.
+
+Why $\pi$? For a camera sitting at elevation $\varepsilon$ above the disc
+plane, the direct image of the disc spans $\Phi$ from $\varepsilon$ to
+$\pi - \varepsilon$, and the first-order image spans $\pi + \varepsilon$ to
+$2\pi - \varepsilon$. The boundaries at multiples of $\pi$ therefore sit in the
+middle of a gap of width $2\varepsilon$. The classification margin is the
+camera's own elevation, which is why an exactly edge-on view is the one place
+the labels genuinely blur: there the two images of the far edge really do
+merge.
+
+Each successive order is squeezed into a band roughly $e^{-\pi}$ times thinner
+than the last. Measured on this app at its default framing, the $n = 1$ band is
+about 7 pixels wide across a 1920-pixel frame and the $n = 2$ band is about a
+quarter of a pixel. That is not a rendering failure, it is the reason the
+photon ring reads as a hard edge rather than as a set of rings.
+
+> **In the code:** `B_CRIT` and `R_PHOTON` in `src/physics/constants.ts`;
+> `sweptAngle` and `imageOrder` in `src/physics/imageOrder.ts`, mirrored in
+> `shaders/geodesic.frag`, and switched on by Light rays -> Tint image orders.
 
 ---
 
@@ -593,18 +623,186 @@ away with it.
 
 ---
 
-## 15. What we cheat on
+## 15. Flying fast: what the sky does
+
+Everything so far assumed you were sitting still. Take the camera on one of the
+scripted flights and two things happen at once, and they are the same thing
+seen twice.
+
+**Aberration.** Directions are not absolute. A photon arriving from a given
+direction in the static frame arrives from a *different* direction as far as a
+moving observer is concerned, and the difference is not small at any decent
+speed. Take the pixel's look direction $\hat{\ell}$ in the camera's own rest
+frame, and the camera's velocity $\boldsymbol\beta$ (in units of $c$) in the
+static frame. Relativistic velocity addition, applied to the photon's
+propagation direction $-\hat{\ell}$ and negated back into a look direction,
+gives the static-frame direction to march along:
+
+$$\hat{n} = \frac{\hat{\ell}/\gamma - \boldsymbol\beta + \dfrac{\gamma}{\gamma+1}(\hat{\ell}\cdot\boldsymbol\beta)\,\boldsymbol\beta}{1 - \hat{\ell}\cdot\boldsymbol\beta}$$
+
+Read it the way the picture works: every static direction is dragged *backward*
+against the motion, so the whole sky bunches toward where you are going. Run
+fast enough and the stars behind you crowd into a ring and the stars ahead
+spread out into a bowl. This is the headlight effect, and it is exactly the
+reason a relativistic jet looks like one beam and not two.
+
+**Doppler.** The same transformation gives the frequency ratio of the received
+photon:
+
+$$D = \gamma\left(1 + \boldsymbol\beta\cdot\hat{n}\right) = \frac{1}{\gamma\left(1 - \hat{\ell}\cdot\boldsymbol\beta\right)}$$
+
+Looking straight ahead gives $\gamma(1+\beta)$, straight behind $\gamma(1-\beta)$,
+and looking at right angles *in the camera frame* gives exactly $1/\gamma$, the
+pure transverse redshift. Bolometrically the received brightness scales as
+$D^4$; the app uses the same exponent 3 the disc and jet already use, for
+continuity rather than for correctness.
+
+**Why the speed is not the derivative of the camera path.** The flights are
+played back on a compressed clock. They move about $3\,r_s$ per wall-clock
+second, which in units where $c = 1$ is several times light speed, and the
+fly-in's recovery teleport would make it infinite. Differentiating the path
+would therefore be nonsense. What the app uses instead is the physical speed of
+the trajectory each move stands for:
+
+- `circle` uses the circular-orbit speed $\sqrt{M/(r-2M)}$ from Part 9, the
+  same expression the disc's own gas uses. About $0.33c$ at the shipped
+  framing.
+- `flyby` and `flyin` use the free-fall-from-infinity speed $\sqrt{r_s/r}$,
+  which is Part 3's escape speed run backwards. About $0.41c$ at the closest
+  point of a pass, and clamped at $0.95c$ near the end of a plunge.
+
+Both are derived and both are already in this document, which an art-directed
+"tour clock" divisor would not be.
+
+At rest all of this is identically the identity: $\gamma = 1$,
+$\hat{\ell}\cdot\boldsymbol\beta = 0$, $\hat{n} = \hat{\ell}$, $D = 1$. Mouse
+orbiting repositions the camera rather than flying it, so it never sees any of
+this.
+
+> **In the code:** `aberrateLookDirection` in `src/physics/relativity.ts` and
+> `aberratedRay` in `shaders/geodesic.frag`; the speeds in
+> `src/render/cameraTour.ts`.
+
+---
+
+## 16. Spin, and what it drags
+
+Every real black hole spins. Schwarzschild is the special case where it does
+not, and once you let it turn, the picture changes in four visible ways that
+all follow from one number.
+
+That number is the **spin parameter** $a = J/M$, an angular momentum per unit
+mass, which has units of length. It is usually quoted dimensionless as $a/M$,
+running from 0 (still) to 1 (as fast as a black hole can turn at all).
+
+**The metric that survives the horizon.** Kerr's solution is usually written in
+Boyer-Lindquist coordinates, which are elegant and blow up at the horizon:
+exactly where the interesting rays go. This app uses the Cartesian
+**Kerr-Schild** form instead, which is flat space plus a rank-one correction:
+
+$$g_{\mu\nu} = \eta_{\mu\nu} + f\, l_\mu l_\nu, \qquad f = \frac{2Mr^3}{r^4 + a^2z^2}$$
+
+with $l_\mu$ a null vector (null with respect to both $\eta$ and $g$) and $r$
+defined implicitly by
+
+$$\frac{x^2+y^2}{r^2+a^2} + \frac{z^2}{r^2} = 1$$
+
+so surfaces of constant $r$ are squashed spheroids rather than spheres. Nothing
+here is singular at the horizon, and the coordinates are already Cartesian, so
+the raymarcher's plane-crossing test and body intersection do not change at
+all. Setting $a = 0$ gives $r = |\mathbf{x}|$, $f = r_s/r$, and Schwarzschild
+back.
+
+**Ray tracing it.** Rather than deriving Christoffel symbols, the app integrates
+the Hamiltonian. With $g^{\mu\nu} = \eta^{\mu\nu} - f\,l^\mu l^\nu$ and the
+photon's energy normalized so $p_t = -1$:
+
+$$H = \tfrac{1}{2}\left(\mathbf{p}\cdot\mathbf{p} - 1 - f\kappa^2\right), \qquad \kappa = 1 + \mathbf{k}\cdot\mathbf{p}$$
+
+$$\frac{d\mathbf{x}}{d\lambda} = \frac{\partial H}{\partial \mathbf{p}} = \mathbf{p} - f\kappa\,\mathbf{k}, \qquad \frac{d\mathbf{p}}{d\lambda} = -\frac{\partial H}{\partial \mathbf{x}} = \tfrac{1}{2}\kappa^2 \nabla f + f\kappa\,(\mathbf{p}\cdot\nabla\mathbf{k})$$
+
+$H$ is zero for a null ray and stays zero, and the angular momentum about the
+spin axis stays put too. Both are watched by the tests, which is how a wrong
+term in $\nabla f$ or $\nabla\mathbf{k}$ gets caught instead of quietly drawing
+a slightly wrong picture.
+
+**Consequence 1: the horizon shrinks.** Solving $\Delta = r^2 - 2Mr + a^2 = 0$:
+
+$$r_\pm = M \pm \sqrt{M^2 - a^2}$$
+
+At $a = 0$ the outer root is $2M = r_s$, the familiar horizon. At $a/M = 0.998$
+it is $0.53\,r_s$: a maximally spinning hole is half the size of a still one of
+the same mass.
+
+**Consequence 2: the shadow goes lopsided.** The photon sphere splits in two.
+Light going around the way the hole turns (prograde) can hold on closer in;
+light going the other way is pushed out:
+
+$$r_{\text{ph}} = 2M\left[1 + \cos\left(\tfrac{2}{3}\arccos\left(\mp a/M\right)\right)\right]$$
+
+with the upper sign prograde. At $a/M = 0.998$ that is $0.54\,r_s$ prograde and
+$2.00\,r_s$ retrograde, against $1.5\,r_s$ for both at zero spin. Evaluating the
+critical impact parameter at each,
+
+$$b_{\text{crit}} = a \pm \frac{2 r_{\text{ph}}\sqrt{\Delta(r_{\text{ph}})}}{r_{\text{ph}} - M}$$
+
+gives $+1.06\,r_s$ on the approaching side and $-3.50\,r_s$ on the receding one.
+Those are the two edges of the shadow, and they are no longer the same distance
+from the centre. That is the flat side of the famous D shape: it is not the
+disc doing it, it is the spacetime.
+
+**Consequence 3: the disc's inner edge follows.** The last stable circular orbit
+moves in as well (Bardeen, Press and Teukolsky 1972):
+
+$$r_{\text{ISCO}} = M\left[3 + Z_2 \mp \sqrt{(3-Z_1)(3+Z_1+2Z_2)}\right]$$
+
+$$Z_1 = 1 + \sqrt[3]{1-(a/M)^2}\left(\sqrt[3]{1+a/M} + \sqrt[3]{1-a/M}\right), \qquad Z_2 = \sqrt{3(a/M)^2 + Z_1^2}$$
+
+From $6M = 3\,r_s$ at zero spin down to $M = 0.5\,r_s$ at the extreme, and
+$0.62\,r_s$ at the shipped limit. The disc is allowed to reach further in, where
+it is hotter and moving faster, which is why a spinning hole's inner disc is so
+much brighter. The retrograde branch goes the other way, out to $9M$.
+
+**Consequence 4: frame dragging.** Near a spinning hole, "standing still" is not
+an option: the geometry itself rotates, and even a ray fired straight at the
+centre with zero angular momentum acquires an azimuth as it falls. The disc
+feels it too, and its orbital speed and redshift pick up the spin:
+
+$$\Omega = \frac{\sqrt{M}}{r^{3/2} + a\sqrt{M}}, \qquad \frac{1}{u^t} = \frac{r^{3/4}\sqrt{r^{3/2} - 3M\sqrt{r} + 2a\sqrt{M}}}{r^{3/2} + a\sqrt{M}}$$
+
+both of which collapse to Part 8's and Part 9's Schwarzschild expressions when
+$a$ is zero.
+
+**Why the slider stops at 0.998.** This is the **Thorne limit**, and it is
+physics rather than a fudge. A hole fed by a thin disc swallows photons from
+the inner disc that carry, on average, negative angular momentum, and they spin
+it back down as fast as the accreting gas spins it up. Accretion therefore
+saturates just short of extremal. Conveniently it is also where the closed forms
+above stay well conditioned: at $a/M = 1$ exactly, $r_{\text{ph}} - M$ goes to
+zero in the prograde $b_{\text{crit}}$.
+
+> **In the code:** `src/physics/kerr.ts` for the closed forms, the Kerr block of
+> `src/physics/geodesic.ts` and `shaders/kerr.glsl` for the integrator.
+
+---
+
+## 17. What we cheat on
 
 A physics document that only lists what it gets right is advertising. Here is
 the other column.
 
 | Cheat | Why | What would fix it |
 |---|---|---|
-| **No spin.** Schwarzschild, not Kerr. | Kerr geodesics are a rewrite of the core integrator. | Real holes spin, which drags space around with them, skews the shadow, and moves the ISCO in to $1.24\,r_s$. |
 | **Two holes are superposed, not solved.** | The real two-body problem in GR needs supercomputers. | Numerical relativity. Our double shadows and eyebrow images are qualitatively right, quantitatively not. |
-| **Matter is pseudo-Newtonian.** | Full geodesic motion for 48,000 particles is too slow. | Paczyński-Wiita gets the ISCO exactly right, which is the part that matters visually. |
+| **A second hole forces the spin to 0.** | Kerr is a one-hole solution and superposing two of them is not one. | It also means a merger leaves a non-spinning remnant, which is wrong: an equal-mass merger leaves $a/M \approx 0.69$. |
+| **Matter is Paczyński-Wiita even when the hole spins.** | Full Kerr geodesic motion for 48,000 particles is too slow. | Only the *boundaries* move with the spin: the disc's inner edge and the kill radius come from the Kerr closed forms, the forces do not. |
+| **The disc's emission angle is a coordinate direction.** | A local orthonormal tetrad at every crossing costs another frame basis per hit. | It is the approximation the app always had; at $a/M = 0.998$ the inner disc sits at $0.62\,r_s$ where it is worse. Keeping it is what makes $a = 0$ continuous. |
+| **The curvature grid is Flamm's Schwarzschild embedding.** | There is no equally clean embedding diagram for Kerr. | The funnel does not change shape when you spin the hole up, though everything else does. |
+| **The jet is drawn, not launched.** | Blandford-Znajek needs magnetohydrodynamics as well as spin. | So the jet does not fade as the spin drops, which is exactly what a real Blandford-Znajek jet would do. The beaming, at least, is computed and not painted. |
+| **Image order is measured about the primary.** | With a secondary in the scene the ray no longer stays in one plane. | The overlay stays qualitatively useful there and no more than that. |
+| **The camera's colour shift is an RGB gain.** | There are no spectra in this renderer, only three channels. | Real Doppler moves light in and out of the visible band and changes which stars are seen at all. Exactly neutral at rest. |
+| **The overlay pass is not aberrated.** | Debris, rays and the grid are drawn by ordinary projection in pass 2. | During a fast flight the raymarched shadow has moved and that geometry has not, so occlusion near the shadow edge is slightly wrong. |
 | **The disc is infinitely thin.** | A volumetric disc multiplies the per-pixel cost. | Raymarched volume with real optical depth. |
-| **The jet is drawn, not launched.** | Blandford-Znajek needs spin, which we do not have, plus magnetohydrodynamics. | GRMHD simulation data. The beaming, at least, is computed and not painted. |
 | **Two clocks run fast.** | A disruption takes days, an inspiral from $8\,r_s$ takes about 1600 time units. | Nothing: the trajectories are exact, only the clock is compressed, and the app says so in the interface. |
 | **No light travel-time delay.** | You see the whole disc at one instant rather than each part as it was when its light left. | Track photon arrival times through the march. |
 | **The sky is invented.** | It follows real structure (luminosity function, dust extinction, clustering) but it is not a star catalogue. | A real survey texture, at the cost of every image looking identical. |
@@ -623,6 +821,15 @@ the other column.
 | Photon sphere | $r = 1.5\,r_s$ | `physics/constants.ts` |
 | Shadow radius | $b_{\text{crit}} = 3\sqrt{3}M \approx 2.6\,r_s$ | `physics/constants.ts` |
 | ISCO | $r = 3\,r_s$ | `physics/constants.ts` |
+| Image order | $n = \lfloor \Phi/\pi \rfloor$, $\Phi = \int \lvert \mathbf{x}\times d\mathbf{x}\rvert / r^2$ | `physics/imageOrder.ts`, `shaders/geodesic.frag` |
+| Aberration | $\hat{n} = (\hat{\ell}/\gamma - \boldsymbol\beta + \tfrac{\gamma}{\gamma+1}(\hat{\ell}\cdot\boldsymbol\beta)\boldsymbol\beta)/(1-\hat{\ell}\cdot\boldsymbol\beta)$ | `physics/relativity.ts`, `shaders/geodesic.frag` |
+| Observer Doppler | $D = \gamma(1 + \boldsymbol\beta\cdot\hat{n})$ | `physics/relativity.ts`, `shaders/geodesic.frag` |
+| Kerr-Schild metric | $g_{\mu\nu} = \eta_{\mu\nu} + f\,l_\mu l_\nu$, $f = 2Mr^3/(r^4+a^2z^2)$ | `shaders/kerr.glsl`, `physics/geodesic.ts` |
+| Kerr ray tracing | $\dot{\mathbf{x}} = \mathbf{p} - f\kappa\mathbf{k}$, $\dot{\mathbf{p}} = \tfrac12\kappa^2\nabla f + f\kappa(\mathbf{p}\cdot\nabla\mathbf{k})$ | `shaders/kerr.glsl`, `physics/geodesic.ts` |
+| Kerr horizon | $r_\pm = M \pm \sqrt{M^2 - a^2}$ | `physics/kerr.ts` |
+| Kerr photon orbits | $r_{\text{ph}} = 2M[1 + \cos(\tfrac23\arccos(\mp a/M))]$ | `physics/kerr.ts` |
+| Kerr ISCO | $r = M[3 + Z_2 \mp \sqrt{(3-Z_1)(3+Z_1+2Z_2)}]$ | `physics/kerr.ts` |
+| Kerr disc kinematics | $\Omega = \sqrt{M}/(r^{3/2}+a\sqrt{M})$ | `physics/kerr.ts`, `shaders/kerr.glsl` |
 | Paczyński-Wiita potential | $\Phi = -GM/(r - r_s)$ | `sim/gravity.ts` |
 | PW circular speed | $v = \sqrt{GMr}/(r - r_s)$ | `sim/gravity.ts` |
 | Specific energy | $\varepsilon = v^2/2 - GM/(r-r_s)$ | `sim/orbit.ts`, `sim/debris.ts` |
@@ -649,3 +856,7 @@ the other column.
 - **Rees (1988)** on tidal disruption, for Parts 10 and 11.
 - **Peters (1964)** for Part 12, four pages that predicted a sound nobody heard
   for fifty-one years.
+- **Bardeen, Press and Teukolsky (1972)**, *Rotating black holes*, for Part 16.
+  The ISCO and photon-orbit formulas this app evaluates are theirs.
+- **Thorne (1974)** for the 0.998 limit: why a hole fed by a disc cannot quite
+  reach extremal.

@@ -6,6 +6,8 @@
  */
 import { Vector3 } from 'three';
 import { BINARY_TUNING, BODY_TUNING, DEBRIS_TUNING, DISC_TUNING, TDE_TUNING } from '../config';
+import { A_STAR_MAX } from '../physics/constants';
+import { horizonRadius, innermostStableCircularOrbit } from '../physics/kerr';
 import type { TdeMode } from '../settings';
 import { createBinary, stepBinary, stepRingdown } from './binary';
 import { stepBody } from './body';
@@ -31,6 +33,7 @@ export function createWorld(maxParticles: number = DEBRIS_TUNING.maxParticles): 
     body: null,
     binary: null,
     primaryRs: 1,
+    spin: 0,
     debris: createPool(maxParticles),
     discBoost: 0,
     spawnAcc: 0,
@@ -140,7 +143,31 @@ export function placeBinary(world: World, requested: Vector3): void {
   if (world.binary?.phase === 'ringdown') {
     world.primaryRs = world.binary.rsFinal;
   }
+  // Two holes are superposed rather than solved, and superposition has no Kerr
+  // form, so a second hole forces the primary to stop spinning.
+  world.spin = 0;
   world.binary = createBinary(world.primaryRs, requested);
+}
+
+/**
+ * Ask the primary to spin at `requested` (dimensionless a/M) and return the
+ * spin actually applied, so the caller can tell the user when it was
+ * overridden. Clamped to the Thorne limit here rather than trusted from the
+ * slider, because the near-extremal closed forms are only well conditioned
+ * below it, and forced to 0 while a second hole is in the scene.
+ */
+export function setPrimarySpin(world: World, requested: number): number {
+  const spin = world.binary === null ? Math.min(Math.max(requested, 0), A_STAR_MAX) : 0;
+  world.spin = spin;
+  return spin;
+}
+
+/** The radii that move with the spin, in world units. */
+function boundariesOf(world: World): { discInnerRadius: number; horizonRadius: number } {
+  return {
+    discInnerRadius: innermostStableCircularOrbit(world.spin, 'prograde') * world.primaryRs,
+    horizonRadius: horizonRadius(world.spin) * world.primaryRs,
+  };
 }
 
 /**
@@ -192,6 +219,7 @@ export function stepWorld(
 
   const env: GravityEnv = {
     rs: world.primaryRs,
+    ...boundariesOf(world),
     bh2:
       world.binary?.phase === 'inspiral'
         ? { pos: world.binary.pos, m: world.binary.rs2 / 2 }

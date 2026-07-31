@@ -1,18 +1,37 @@
-// Schwarzschild geodesic raymarcher: per pixel, integrates the photon
-// equation of motion  x'' = -1.5 * h^2 * x / r^5  (r_s = 1 units) with RK4
-// and an adaptive step, accumulating the accretion disc at equatorial-plane
-// crossings and testing the (tidally stretched) planet ellipsoid per step.
-// Escaped rays sample the star cubemap along the bent direction; captured
-// rays are the shadow. Alpha output is the horizon mask (0 = captured),
-// consumed by the overlay scene pass for occlusion.
+// Geodesic raymarcher: per pixel, integrates a null geodesic with RK4 and an
+// adaptive step, accumulating the accretion disc at equatorial-plane crossings
+// and testing the (tidally stretched) planet ellipsoid per step. Escaped rays
+// sample the star cubemap along the bent direction; captured rays are the
+// shadow. Alpha output is the horizon mask (0 = captured), consumed by the
+// overlay scene pass for occlusion.
+//
+// Two spacetimes live here, selected by one uniform-valued branch:
+//
+// - uKerrA == 0.0: the Schwarzschild superposition this app shipped with,
+//   x'' = -1.5 rs h^2 x / r^5, which is exact for one hole and the standard
+//   approximation for two. Every expression below it is the literal original,
+//   so a still hole renders exactly the frame it always did.
+// - uKerrA > 0.0: the exact Kerr metric in Cartesian Kerr-Schild form,
+//   integrated as a Hamiltonian system on (x, p) with p_t = -1. Single hole
+//   only; blackHolePass guarantees a spinning hole never has a secondary.
+//
+// The two are not unified on purpose. They are analytically identical at
+// a = 0 and not identical in floating point, and the a = 0 image is a
+// promise, not an approximation.
+//
+// The camera's own motion during a scripted flight enters once, before the
+// march, as a Lorentz transformation of the pixel's look direction, plus the
+// Doppler factor of that same ray applied to the whole received radiance.
 //
 // Compile-time defines injected from TS: MAX_STEPS, USE_RK4, BEAM_EXP,
 // R_CAPTURE, R_ESCAPE, STEP_K, DT_MIN, DT_MAX.
 
 #include ./noise.glsl;
+#include ./kerr.glsl;
 
 uniform vec3 uCamPos;
 uniform mat3 uCamBasis;
+uniform vec3 uCamBeta;  // camera velocity in units of c, world frame; zero unless a flight is running
 uniform float uTanHalfFov;
 uniform float uAspect;
 uniform vec2 uResolution;
@@ -20,6 +39,8 @@ uniform vec2 uJitter;
 uniform float uTime;
 uniform samplerCube uSky;
 uniform float uRs;      // primary Schwarzschild radius (grows after a merger)
+uniform float uKerrA;   // spin in length units, a = (a/M) * M * rs; 0 selects Schwarzschild
+uniform float uHorizonR; // outer horizon r+ in world units; equals uRs when uKerrA is 0
 uniform int uBh2Active; // secondary inspiraling black hole
 uniform vec3 uBh2Pos;
 uniform float uBh2Rs;
@@ -28,6 +49,7 @@ uniform float uDiscOuter;
 uniform float uDiscBrightness; // 0 disables the disc entirely
 uniform float uJetStrength;  // 0 disables the polar jet
 uniform float uWindStrength; // super-Eddington outflow; rises as the disc is fed
+uniform float uImageOrderTint; // 0 removes the winding accumulation from the march
 uniform int uPlanetActive;
 uniform vec3 uPlanetPos;
 uniform vec3 uPlanetRadii;
@@ -50,7 +72,21 @@ vec3 accelG(vec3 x, vec3 v) {
   return a;
 }
 
+// Angle swept about the primary between two march positions. Small-angle form
+// (see physics/imageOrder.ts for the error budget): the step clamp keeps the
+// per-step angle near 0.11 rad, where sin(t) understates t by 2.3e-4. Raising
+// STEP_K or DT_MAX invalidates that bound.
+float sweptAngle(vec3 from, vec3 to) {
+  float lengths = length(from) * length(to);
+  if (lengths <= 0.0) return 0.0;
+  return length(cross(from, to)) / lengths;
+}
+
 bool isCaptured(vec3 x) {
+  if (uKerrA > 0.0) {
+    float capK = R_CAPTURE * uHorizonR;
+    return kerrSchildRadius(spinFrame(x), uKerrA) < capK;
+  }
   float cap = R_CAPTURE * uRs;
   if (dot(x, x) < cap * cap) return true;
   if (uBh2Active == 1) {
@@ -62,34 +98,105 @@ bool isCaptured(vec3 x) {
 }
 
 float stepSizeAt(vec3 x) {
+  if (uKerrA > 0.0) {
+    // Margin measured from the horizon, which has shrunk with the spin.
+    return clamp(STEP_K * (kerrSchildRadius(spinFrame(x), uKerrA) - 0.9 * uHorizonR), DT_MIN, DT_MAX);
+  }
   float margin = length(x) - 0.9 * uRs;
   if (uBh2Active == 1) margin = min(margin, length(x - uBh2Pos) - 0.9 * uBh2Rs);
   return clamp(STEP_K * margin, DT_MIN, DT_MAX);
 }
 
-void integrateStep(inout vec3 x, inout vec3 v, float dt) {
+// The state marched is a velocity in the Schwarzschild branch and a momentum
+// in the Kerr branch; `photonDirection` is what turns either into the unit
+// direction the shading and the sky lookup want.
+vec3 photonDirection(vec3 x, vec3 p) {
+  if (uKerrA > 0.0) return kerrMarchDirection(x, p, uKerrA, 0.5 * uRs);
+  return p;
+}
+
+void integrateStep(inout vec3 x, inout vec3 p, float dt) {
+  if (uKerrA > 0.0) {
+    vec3 dx1, dp1, dx2, dp2, dx3, dp3, dx4, dp4;
+    float mass = 0.5 * uRs;
+    kerrDerivatives(x, p, uKerrA, mass, dx1, dp1);
+    kerrDerivatives(x + 0.5 * dt * dx1, p + 0.5 * dt * dp1, uKerrA, mass, dx2, dp2);
+    kerrDerivatives(x + 0.5 * dt * dx2, p + 0.5 * dt * dp2, uKerrA, mass, dx3, dp3);
+    kerrDerivatives(x + dt * dx3, p + dt * dp3, uKerrA, mass, dx4, dp4);
+    x += dt / 6.0 * (dx1 + 2.0 * dx2 + 2.0 * dx3 + dx4);
+    p += dt / 6.0 * (dp1 + 2.0 * dp2 + 2.0 * dp3 + dp4);
+    return;
+  }
 #if USE_RK4
-  vec3 a1 = accelG(x, v);
-  vec3 xB = x + 0.5 * dt * v;
-  vec3 vB = v + 0.5 * dt * a1;
+  vec3 a1 = accelG(x, p);
+  vec3 xB = x + 0.5 * dt * p;
+  vec3 vB = p + 0.5 * dt * a1;
   vec3 a2 = accelG(xB, vB);
   vec3 xC = x + 0.5 * dt * vB;
-  vec3 vC = v + 0.5 * dt * a2;
+  vec3 vC = p + 0.5 * dt * a2;
   vec3 a3 = accelG(xC, vC);
   vec3 xD = x + dt * vC;
-  vec3 vD = v + dt * a3;
+  vec3 vD = p + dt * a3;
   vec3 a4 = accelG(xD, vD);
-  x += dt / 6.0 * (v + 2.0 * vB + 2.0 * vC + vD);
-  v += dt / 6.0 * (a1 + 2.0 * a2 + 2.0 * a3 + a4);
+  x += dt / 6.0 * (p + 2.0 * vB + 2.0 * vC + vD);
+  p += dt / 6.0 * (a1 + 2.0 * a2 + 2.0 * a3 + a4);
 #else
   // Midpoint (RK2) for the low-quality preset.
-  vec3 a1 = accelG(x, v);
-  vec3 xm = x + 0.5 * dt * v;
-  vec3 vm = v + 0.5 * dt * a1;
+  vec3 a1 = accelG(x, p);
+  vec3 xm = x + 0.5 * dt * p;
+  vec3 vm = p + 0.5 * dt * a1;
   vec3 am = accelG(xm, vm);
   x += dt * vm;
-  v += dt * am;
+  p += dt * am;
 #endif
+}
+
+struct ObserverRay {
+  vec3 dir;       // look direction in the static frame, ready to march
+  float doppler;  // received / emitted frequency for this pixel
+};
+
+// Transform the pixel's look direction out of the camera's rest frame into the
+// static frame the march and the sky cubemap live in. Applied once per pixel,
+// before the march, and never inside it: the shadow, the ring, the disc and
+// the sky then aberrate together, which is the whole point. Aberrating only
+// the escaped direction would slide the star field while the shadow stayed
+// put and tear the image apart.
+//
+// The disc's and the jet's own g and delta are the emitter side of a different
+// transformation and are deliberately left alone.
+ObserverRay aberratedRay(vec3 look) {
+  ObserverRay ray;
+  // Exact identity at rest, by construction rather than by rounding: a
+  // normalize of an already-unit vector can move it by an ulp, and orbiting
+  // with the mouse has to render the frame it always did.
+  if (dot(uCamBeta, uCamBeta) == 0.0) {
+    ray.dir = look;
+    ray.doppler = 1.0;
+    return ray;
+  }
+  float gamma = inversesqrt(max(1.0 - dot(uCamBeta, uCamBeta), 1e-6));
+  float lookDotBeta = dot(look, uCamBeta);
+  float invDenom = 1.0 / (1.0 - lookDotBeta);
+  vec3 parallel = (gamma / (gamma + 1.0)) * lookDotBeta * uCamBeta;
+  ray.dir = normalize((look / gamma - uCamBeta + parallel) * invDenom);
+  ray.doppler = invDenom / gamma;
+  return ray;
+}
+
+// Beaming and colour for a received photon. Bolometrically the brightness of a
+// boosted source goes as D^4; BEAM_EXP is the 3.0 the disc and jet already
+// use, kept for continuity. The per-channel offset is art direction: there are
+// no spectra here, only RGB, so the hue is pushed the way a Planck spectrum
+// would move, and it is exactly neutral (1, 1, 1) at doppler = 1.
+const float SKY_HUE_SHIFT = 0.55;
+
+vec3 boostGainOf(float doppler) {
+  if (doppler == 1.0) return vec3(1.0); // at rest, exactly and for free
+  // Clamped so a fly-past does not turn into a white smear on the way in or a
+  // black hole in the sky on the way out. Art direction, not physics.
+  float shift = clamp(doppler, 0.35, 2.2);
+  return pow(vec3(shift), BEAM_EXP + vec3(-SKY_HUE_SHIFT, 0.0, SKY_HUE_SHIFT));
 }
 
 // Crude Planckian ramp: temperature scalar ~0 deep red -> ~1 white -> hotter blue.
@@ -100,20 +207,32 @@ vec3 blackbody(float t) {
   return c;
 }
 
+// Orbital kinematics of the gas at radius r. The Kerr branch is the general
+// case and the a = 0 branch is its own algebraic limit, written out literally
+// so a still hole shades exactly as it always did, to the last bit.
+DiscKinematics discKinematics(float r) {
+  if (uKerrA > 0.0) return kerrCircularOrbit(r, uKerrA, 0.5 * uRs);
+  DiscKinematics orbit;
+  orbit.omega = sqrt(0.5 * uRs / (r * r * r));
+  orbit.beta = sqrt(0.5 * uRs / max(r - uRs, 0.3));
+  orbit.redshift = sqrt(max(1.0 - 1.5 * uRs / r, 0.0));
+  return orbit;
+}
+
 // Disc emission at an equatorial crossing. `marchDir` is our marching
 // direction (camera -> scene); the photon physically travels the other way.
 // Returns premultiplied rgb and coverage alpha.
 vec4 discEmission(vec3 hit, vec3 marchDir) {
   float r = length(hit.xz);
+  DiscKinematics orbit = discKinematics(r);
 
   // Shakura–Sunyaev temperature profile, normalized to peak at 1.
   float q = max(1.0 - sqrt(uDiscInner / r), 0.0);
   float tProf = pow(uDiscInner / r, 0.75) * pow(q, 0.25) * 2.05;
 
-  // Differential rotation: advect the noise field by the local Keplerian
-  // angular speed so streaks shear into trailing spirals on their own.
-  float omega = sqrt(0.5 * uRs / (r * r * r));
-  float ang = omega * uTime;
+  // Differential rotation: advect the noise field by the local angular speed
+  // so streaks shear into trailing spirals on their own.
+  float ang = orbit.omega * uTime;
   float ca = cos(ang);
   float sa = sin(ang);
   vec2 mq = vec2(hit.x * ca + hit.z * sa, -hit.x * sa + hit.z * ca);
@@ -129,14 +248,34 @@ vec4 discEmission(vec3 hit, vec3 marchDir) {
   // Doppler + gravitational shift for a circular geodesic emitter, using the
   // bent photon direction so the lensed secondary image beams correctly too.
   vec3 phiHat = normalize(vec3(-hit.z, 0.0, hit.x));
-  float beta = clamp(sqrt(0.5 * uRs / max(r - uRs, 0.3)), 0.0, 0.9);
+  float beta = clamp(orbit.beta, 0.0, 0.9);
   float gamma = inversesqrt(1.0 - beta * beta);
   float cosA = dot(-marchDir, phiHat);
-  float g = sqrt(max(1.0 - 1.5 * uRs / r, 0.0)) / (gamma * (1.0 - beta * cosA));
+  float g = orbit.redshift / (gamma * (1.0 - beta * cosA));
 
   vec3 col = blackbody(tProf * g) * tProf * pow(g, BEAM_EXP);
   col *= uDiscBrightness * 16.0 * (0.3 + 0.9 * density);
   return vec4(col * alpha, alpha);
+}
+
+// Diagnostic overlay: recolour the disc by how many half turns the light made
+// on its way here. The physics is only the floor(Phi / pi) partition; the
+// three colours are art direction, chosen to read apart at a glance.
+const vec3 ORDER_DIRECT_TINT = vec3(0.42, 0.66, 1.00);
+const vec3 ORDER_FIRST_TINT = vec3(1.00, 0.70, 0.26);
+const vec3 ORDER_RING_TINT = vec3(1.00, 0.36, 0.92);
+
+vec3 imageOrderTint(float windingAngle) {
+  float order = min(floor(windingAngle / 3.14159265), 2.0);
+  vec3 tint = mix(ORDER_DIRECT_TINT, ORDER_FIRST_TINT, step(0.5, order));
+  return mix(tint, ORDER_RING_TINT, step(1.5, order));
+}
+
+// Luminance preserving: only the hue moves, so switching the overlay on never
+// changes exposure, bloom or the alpha horizon mask.
+vec4 tintByImageOrder(vec4 emission, float windingAngle) {
+  float luma = dot(emission.rgb, vec3(0.2126, 0.7152, 0.0722));
+  return vec4(mix(emission.rgb, imageOrderTint(windingAngle) * luma, uImageOrderTint), emission.a);
 }
 
 // Optically thin polar jet: two narrow cones along the disc axis, filled with
@@ -334,19 +473,35 @@ vec3 coronaEmission(vec3 p, float dt) {
 void main() {
   vec2 ndc = (gl_FragCoord.xy + uJitter) / uResolution * 2.0 - 1.0;
   vec3 x = uCamPos;
-  vec3 v = normalize(uCamBasis * vec3(ndc.x * uAspect * uTanHalfFov, ndc.y * uTanHalfFov, -1.0));
+  vec3 look = normalize(uCamBasis * vec3(ndc.x * uAspect * uTanHalfFov, ndc.y * uTanHalfFov, -1.0));
+
+  // Out of the camera's rest frame into the static frame, once per pixel.
+  ObserverRay ray = aberratedRay(look);
+  vec3 dir = ray.dir;
+  vec3 boostGain = boostGainOf(ray.doppler);
+
+  float phiWound = 0.0;
+  bool tintOrders = uImageOrderTint > 0.0;
 
   // Fast-forward a distant camera to the escape sphere; deflection out there
   // is negligible and the saved steps go to the photon ring instead.
   if (dot(x, x) > R_ESCAPE * R_ESCAPE) {
-    float tca = dot(-x, v);
+    float tca = dot(-x, dir);
     float d2 = dot(x, x) - tca * tca;
     if (tca < 0.0 || d2 > R_ESCAPE * R_ESCAPE * 0.98) {
-      gl_FragColor = vec4(textureCube(uSky, v).rgb, 1.0);
+      gl_FragColor = vec4(textureCube(uSky, dir).rgb * boostGain, 1.0);
       return;
     }
-    x += v * (tca - sqrt(R_ESCAPE * R_ESCAPE * 0.98 - d2));
+    vec3 xFar = x;
+    x += dir * (tca - sqrt(R_ESCAPE * R_ESCAPE * 0.98 - d2));
+    // The skipped chord still swept an angle about the hole, so the image
+    // order has to start from it rather than from zero.
+    if (tintOrders) phiWound = acos(clamp(dot(normalize(xFar), normalize(x)), -1.0, 1.0));
   }
+
+  // The Kerr branch marches a momentum, the Schwarzschild branch a velocity;
+  // at a = 0 the momentum is the direction itself, so this is the identity.
+  vec3 p = uKerrA > 0.0 ? kerrNullMomentum(x, dir, uKerrA, 0.5 * uRs) : dir;
 
   vec3 col = vec3(0.0);
   float T = 1.0;
@@ -358,12 +513,16 @@ void main() {
       captured = true;
       break;
     }
-    if (dot(x, x) > R_ESCAPE * R_ESCAPE && dot(x, v) > 0.0) break;
+    if (dot(x, x) > R_ESCAPE * R_ESCAPE && dot(x, dir) > 0.0) break;
 
     float dt = stepSizeAt(x);
     vec3 xPrev = x;
-    vec3 vPrev = v;
-    integrateStep(x, v, dt);
+    vec3 dirPrev = dir;
+    integrateStep(x, p, dt);
+    dir = photonDirection(x, p);
+
+    float dPhi = 0.0;
+    if (tintOrders) dPhi = sweptAngle(xPrev, x);
 
     // Order the two possible hits inside this segment by their parameter.
     float sDisc = 2.0;
@@ -382,16 +541,20 @@ void main() {
     }
 
     // Volumetric, so these accumulate every step rather than at a crossing.
+    // Deliberately not tinted by image order: one ray crosses them at many
+    // orders, so a per-step tint would smear across the boundary.
     vec3 mid = mix(xPrev, x, 0.5);
-    col += T * jetEmission(mid, normalize(mix(vPrev, v, 0.5)), dt);
+    col += T * jetEmission(mid, normalize(mix(dirPrev, dir, 0.5)), dt);
     col += T * windEmission(mid, dt);
     col += T * coronaEmission(mid, dt);
 
     if (sDisc < sPlanet) {
-      vec4 e = discEmission(mix(xPrev, x, sDisc), normalize(mix(vPrev, v, sDisc)));
+      vec4 e = discEmission(mix(xPrev, x, sDisc), normalize(mix(dirPrev, dir, sDisc)));
+      if (tintOrders) e = tintByImageOrder(e, phiWound + sDisc * dPhi);
       col += T * e.rgb;
       T *= 1.0 - e.a;
     }
+    phiWound += dPhi;
     if (sPlanet <= 1.0) {
       // Opaque: anything behind the planet in this segment is hidden.
       col += T * shadePlanet(pPos, pNrm, pLocal);
@@ -400,10 +563,18 @@ void main() {
       break;
     }
     if (T < 0.01) break;
+
+    // Kerr only: the prograde photon orbit is dragged in toward the horizon,
+    // so near-critical rays wind far more and a ray that runs out of steps
+    // while still inside the escape sphere is a captured ray we could not
+    // afford to follow. Treating it as escaped speckles the shadow edge. The
+    // same rule would improve the a = 0 image, but applying it there would
+    // change the shipped frame, so the asymmetry is deliberate.
+    if (uKerrA > 0.0 && i == MAX_STEPS - 1 && dot(x, x) < R_ESCAPE * R_ESCAPE) captured = true;
   }
 
   if (!captured && !opaqueHit && T > 0.001) {
-    col += T * textureCube(uSky, normalize(v)).rgb;
+    col += T * textureCube(uSky, normalize(dir)).rgb;
   }
-  gl_FragColor = vec4(col, captured ? 0.0 : 1.0);
+  gl_FragColor = vec4(col * boostGain, captured ? 0.0 : 1.0);
 }

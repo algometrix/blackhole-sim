@@ -23,6 +23,11 @@ export interface SkySettings {
 export interface Settings {
   paused: boolean;
   timeScale: number;
+  /**
+   * Dimensionless Kerr spin a/M in [0, A_STAR_MAX], prograde with the disc.
+   * 0 is Schwarzschild and is what the app ships with.
+   */
+  spin: number;
   discEnabled: boolean;
   discBrightness: number;
   jetEnabled: boolean;
@@ -36,6 +41,19 @@ export interface Settings {
   photonsEnabled: boolean;
   photonCount: number;
   photonSpreadDeg: number;
+  /**
+   * Recolour the disc by image order. A diagnostic overlay, not part of the
+   * default look, so it ships off.
+   */
+  imageOrderTintEnabled: boolean;
+  imageOrderTintStrength: number;
+  /**
+   * Relativistic optics of a moving camera. Only ever non-zero while a
+   * scripted flight is running; mouse orbiting repositions the camera rather
+   * than flying it, so it stays exactly off there.
+   */
+  cameraBoostEnabled: boolean;
+  cameraBoostStrength: number;
   bloomStrength: number;
   quality: QualityPreset;
   tdeMode: TdeMode;
@@ -52,6 +70,7 @@ export function defaultSettings(): Settings {
   return {
     paused: false,
     timeScale: 1.0,
+    spin: 0,
     discEnabled: true,
     discBrightness: 1.0,
     jetEnabled: false,
@@ -63,6 +82,10 @@ export function defaultSettings(): Settings {
     photonsEnabled: false,
     photonCount: 8,
     photonSpreadDeg: 10,
+    imageOrderTintEnabled: false,
+    imageOrderTintStrength: 0.85,
+    cameraBoostEnabled: true,
+    cameraBoostStrength: 1.0,
     bloomStrength: 1.2,
     quality: 'medium',
     tdeMode: 'cinematic',

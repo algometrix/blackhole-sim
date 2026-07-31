@@ -81,8 +81,6 @@ export const DEBRIS_TUNING = {
   /** Disc-plane settling spring (s^-2) and damping (s^-1). */
   planeSpring: 0.5,
   planeDamping: 1.0,
-  /** Radius where particles start being absorbed into the disc (ISCO). */
-  absorbRadius: 3.0,
   /**
    * How circular a particle's orbit must be before the disc takes it: inside
    * the ISCO its speed-squared must fall below this multiple of the local
@@ -92,7 +90,8 @@ export const DEBRIS_TUNING = {
   circularizedSpeedFactor: 1.3,
   /** Seconds over which an absorbed particle fades out. */
   absorbFadeTime: 1.5,
-  /** Hard-kill radius just outside the horizon. */
+  /** Hard-kill radius as a multiple of the outer horizon, which shrinks as
+   *  the hole spins up, so this must not be written in r_s. */
   killRadius: 1.05,
   /**
    * Hard-kill age in disruption-clock seconds. An orbit at 8 r_s takes ~200 of

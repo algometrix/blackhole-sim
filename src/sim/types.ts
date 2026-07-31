@@ -87,6 +87,13 @@ export interface World {
   binary: BinaryState | null;
   /** Primary Schwarzschild radius; 1 initially, grows after a merger. */
   primaryRs: number;
+  /**
+   * Dimensionless Kerr spin a/M of the primary, prograde with the disc. It is
+   * a property of the hole rather than a per-step argument, which is what
+   * keeps `stepWorld`'s parameter list from growing again. Forced to 0 while
+   * a second hole is in the scene: superposed centers have no Kerr form.
+   */
+  spin: number;
   debris: DebrisPool;
   /** 0..boostMax; disc brightness multiplier is (1 + discBoost). Decays. */
   discBoost: number;
