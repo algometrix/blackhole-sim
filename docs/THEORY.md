@@ -591,6 +591,35 @@ around the hole. That returning ribbon is the stream you see. The rate at
 which it comes back follows a famous power law, $\dot M \propto t^{-5/3}$
 (Rees, 1988), which is how real tidal disruption flares are identified.
 
+**Where the $-5/3$ comes from.** It falls out of Kepler and nothing else. Take
+the energy spread to be flat across the star, so equal masses of debris landed
+in equal slices of binding energy:
+
+$$\frac{dM}{d|\varepsilon|} = \text{constant}$$
+
+A bound fragment with binding energy $|\varepsilon|$ is on an ellipse whose size
+is fixed by that energy alone, $a = GM / (2|\varepsilon|)$, and Part 2's orbit
+equation gives the time it takes to come back:
+
+$$T = 2\pi\sqrt{\frac{a^3}{GM}} = 2\pi\, GM\, (2|\varepsilon|)^{-3/2}$$
+
+Tightly bound debris returns quickly, barely bound debris takes almost forever.
+Now turn the question round: at time $t$ after the disruption, *which* fragments
+are arriving? The ones whose period is $t$:
+
+$$|\varepsilon|(t) = \tfrac{1}{2}\left(\frac{2\pi GM}{t}\right)^{2/3}$$
+
+The mass arriving per second is the mass sitting in each slice of energy times
+how fast that energy window sweeps downward:
+
+$$\frac{dM}{dt} = \frac{dM}{d|\varepsilon|}\cdot\left|\frac{d|\varepsilon|}{dt}\right|
+= \frac{dM}{d|\varepsilon|}\cdot\frac{1}{3}\,(2\pi GM)^{2/3}\, t^{-5/3}$$
+
+$$\boxed{\dot M \propto t^{-5/3}}$$
+
+Everything about the star cancels except the constant out front. That is why the
+exponent, and not the brightness, is the thing surveys look for.
+
 **The trap.** Energy is not the only thing that matters: angular momentum
 decides how close the debris passes on its return. Give a particle a kick along
 its direction of travel and you change its energy *and* strip its angular
@@ -603,9 +632,44 @@ particle onto the star's own orbit at its own radius rather than copying the
 star's velocity vector. Both decisions were arrived at by watching the stream
 fail without them.
 
+**Watching for the law, and not finding it.** The app can plot its own version
+of that curve: turn on *Light curve* and it records how hard the disruption is
+feeding the disc against time since the star came apart, on log axes, with the
+$t^{-5/3}$ law drawn through the peak for comparison.
+
+The two do not agree, and the overlay is built to show that rather than hide it.
+A realistic-mode star at the shipped settings decays like $t^{-7.3}$, four times
+steeper than the law. Three reasons, all of them ours and none of them nature's:
+
+- **What is plotted is not the fallback rate.** It is the disc's feeding glow,
+  which is the absorbed-debris rate smeared by an exponential decay time
+  (`DISC_TUNING.boostDecayTau`). Once the last particle is swallowed the curve is
+  that decay and nothing else, and an exponential on log axes gets steeper
+  without limit.
+- **The debris is not left alone to return.** A small drag circularises it on a
+  fixed timescale, so the whole bound half is eaten within about a factor of two
+  in time instead of spreading over the decades a real energy distribution
+  covers. A hard age limit kills the longest-period debris, which is exactly the
+  material that would have made the late tail.
+- **The clock is compressed.** The feeding glow decays on the simulation clock
+  while the chart is drawn on the disruption clock, so the *Disruption speed*
+  slider changes the fitted slope: about $-12.5$ at compression 4, $-7.3$ at 8,
+  $-3.3$ at 30. A measurement of nature would not care where that slider is.
+
+Cinematic mode fits about $-1.85$, which looks like a match and is not one: that
+mode is a drag-driven spiral with no energy spread at all, so it has no fallback
+to obey, and its number moves with the same slider. The chart therefore prints
+the fitted index next to the law's and anchors the reference line at the
+recorded peak instead of fitting its height, so the gap is always on screen.
+
 > **In the code:** `spawnFromBody` in `src/sim/debris.ts`, the orbit
 > reconstruction in `src/sim/orbit.ts`, and the tests in
 > `src/sim/__tests__/stream.test.ts` that hold the resulting shape in place.
+> The light curve itself is `src/ui/lightCurve.ts` (the recorder and the
+> log-log projection) and `src/ui/lightCurveChart.ts` (the canvas), with
+> `src/ui/__tests__/lightCurve.test.ts` and
+> `src/ui/__tests__/fallbackLaw.test.ts`, the second of which drives real
+> disruptions and pins every number quoted above.
 
 ---
 
@@ -921,6 +985,8 @@ the other column.
 | **The disc is infinitely thin.** | A volumetric disc multiplies the per-pixel cost. | Raymarched volume with real optical depth. |
 | **Three clocks run fast.** | A disruption takes days, an inspiral from $8\,r_s$ takes about 1600 time units, and a probe dropped from $7\,r_s$ takes forty seconds to stop being visible. | Nothing: the trajectories are exact, only the clock is compressed, and the app says so in the interface. |
 | **No light travel-time delay.** | You see the whole disc at one instant rather than each part as it was when its light left. The infalling probe is drawn at its current coordinate position too, with propagation treated as instantaneous: that changes the time constant of the freeze, not the fact of it. | Track photon arrival times through the march. |
+| **The light curve is not the fallback law.** | We plot the disc's feeding glow, which is the absorbed-debris rate smeared by a decay time, fed by debris that a drag term circularises on a fixed timescale. | Leave the debris on its own orbits and plot the arrival rate directly. As it stands the curve decays like $t^{-7.3}$, so the app draws the law next to it and says which is which. |
+
 | **The sky is invented.** | It follows real structure (luminosity function, dust extinction, clustering) but it is not a star catalogue. | A real survey texture, at the cost of every image looking identical. |
 
 ---
@@ -953,6 +1019,8 @@ the other column.
 | Doppler + gravity shift | $g = \sqrt{1 - 3M/r}\,/\,\gamma(1 - \beta\cos\alpha)$ | `shaders/geodesic.frag` |
 | Tidal radius | $r_T \approx R_\star (M/m_\star)^{1/3}$ | `config.ts` |
 | Tidal energy spread | $\Delta\varepsilon \approx GMR_\star/r_p^2$ | `sim/debris.ts` |
+| Debris return period | $T = 2\pi GM(2\lvert\varepsilon\rvert)^{-3/2}$ | Part 11 |
+| Fallback rate | $\dot M \propto t^{-5/3}$ | `ui/lightCurve.ts` (drawn for comparison) |
 | Peters inspiral | $da/dt = -\tfrac{64}{5} G^3 m_1m_2(m_1{+}m_2)/c^5a^3$ | `sim/binary.ts` |
 | Radiated mass | $E_{\text{rad}} \approx 0.048 M_{\text{tot}}\,\eta/0.25$ | `sim/binary.ts` |
 | Flamm's paraboloid | $z = 2\sqrt{r_s(r - r_s)}$ | `render/spacetimeGrid.ts` |

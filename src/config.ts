@@ -131,6 +131,41 @@ export const DISC_TUNING = {
   boostPerBody: 1.0,
 };
 
+export const LIGHT_CURVE_TUNING = {
+  /**
+   * Sampling period on the *disruption clock* (see the two-clocks note at the
+   * top of this file), so the recorded shape does not change when the
+   * Disruption speed slider does. Two disruption-seconds is fine enough to
+   * resolve the rise and coarse enough that a whole flare fits in the buffer.
+   */
+  sampleInterval: 2.0,
+  /**
+   * 512 samples at that interval is 1024 disruption-seconds, longer than
+   * DEBRIS_TUNING.maxAge, so a single flare plays out without ever having to
+   * decimate. The ring still halves itself if someone leaves one running.
+   */
+  maxSamples: 512,
+  /** Repaint period. The chart is a readout, not an animation. */
+  repaintMs: 100,
+  /** Decades of brightness shown below the peak. Three is where the noise
+   *  floor of the absorbed-particle count takes over. */
+  visibleDecades: 3,
+  /**
+   * The decay fit starts this many peak-times in, past the rise and the
+   * turnover, which are the shape of DISC_TUNING.boostDecayTau rather than of
+   * anything falling back. The fitted number describes the plotted curve and is
+   * not a measurement of the fallback index: at the shipped tuning it comes out
+   * near -7 and tracks tdeTimeCompression, for the reasons written out at the
+   * top of ui/lightCurve.ts.
+   */
+  fitStartFactor: 1.5,
+  /** Ignore samples below this fraction of the peak: down there the boost is
+   *  the exponential tail of the last few absorbed particles. */
+  fitFloorFraction: 0.02,
+  /** Fewer points than this is a slope through noise, so no number is shown. */
+  minFitSamples: 8,
+};
+
 export const PLACEMENT_TUNING = {
   rMin: 7.0,
   rMax: 20.0,

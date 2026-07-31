@@ -266,6 +266,20 @@ export function buildPanel(
   );
   disc.close();
 
+  // Straight after the disc, because what it plots is that disc being fed.
+  // Neither control needs an onChange: the chart reads settings on its own
+  // repaint tick.
+  const lightCurve = gui.addFolder('Light curve');
+  explain(
+    lightCurve.add(settings, 'lightCurveEnabled').name('Show'),
+    'Plots how hard the disruption is feeding the disc against time since the star came apart. Both axes are logarithmic, so a power law is a straight line. It is a readout rather than part of the picture, which is why it ships off.',
+  );
+  explain(
+    lightCurve.add(settings, 'lightCurveFallbackReference').name('Reference law (t^-5/3)'),
+    'Draws the classic fallback law through the peak of the recorded curve: bound debris returns at a rate proportional to t^(-5/3), which is how real tidal disruption flares are identified. It is anchored at the peak and never fitted, because this simulation does not reproduce the law and the gap is the interesting part. Its debris is dragged into the disc on a fixed timescale instead of returning on its own orbits, and the feeding glow has a decay time of its own, so the recorded curve falls off several times faster and its slope moves with the Disruption speed slider. See part 11 of docs/THEORY.md.',
+  );
+  lightCurve.close();
+
   const jet = gui.addFolder('Relativistic jet');
   explain(
     jet.add(settings, 'jetEnabled').name('Show'),
