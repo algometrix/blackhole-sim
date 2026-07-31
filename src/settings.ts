@@ -43,6 +43,15 @@ export interface Settings {
   gwTimeCompression: number;
   /** Wall-clock compression of a disruption and its debris (same trick). */
   tdeTimeCompression: number;
+  /**
+   * The tidal-disruption light-curve overlay. The plotted series is the disc's
+   * feeding boost (world.discBoost), not settings.discBrightness: the fallback
+   * law describes the rate matter returns to the hole, and the boost is the
+   * only part of the disc's brightness a disruption drives.
+   */
+  lightCurveEnabled: boolean;
+  /** Draw the anchored t^(-5/3) fallback law next to the recorded curve. */
+  lightCurveFallbackReference: boolean;
   soundEnabled: boolean;
   volume: number;
   sky: SkySettings;
@@ -68,6 +77,9 @@ export function defaultSettings(): Settings {
     tdeMode: 'cinematic',
     gwTimeCompression: BINARY_TUNING.timeCompression,
     tdeTimeCompression: BODY_TUNING.timeCompression,
+    // A readout rather than part of the picture, so it ships off.
+    lightCurveEnabled: false,
+    lightCurveFallbackReference: true,
     soundEnabled: false,
     volume: 0.6,
     sky: {

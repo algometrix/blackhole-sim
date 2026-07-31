@@ -24,6 +24,8 @@ import { clearBody, createWorld, placeBinary, placeBody, resetScene, stepWorld }
 import type { Body } from './sim/types';
 import { CinematicMode, isTypingIntoControl } from './ui/chrome';
 import { touchRenderBudget, usesTouchUi } from './ui/device';
+import { createFlareCurve, recordFeeding, resetFlare, startFlare } from './ui/lightCurve';
+import { LightCurveChart } from './ui/lightCurveChart';
 import { buildPanel } from './ui/panel';
 import type { Preset } from './ui/presets';
 import { PlacementController } from './ui/placement';
@@ -59,6 +61,7 @@ const app = requireElement('app');
 const hud = requireElement('hud');
 const toast = requireElement('toast');
 const chromeToggle = requireElement('chrome-toggle');
+const lightCurveContainer = requireElement('light-curve');
 
 // A finger-driven device gets the touch layout and a smaller render budget,
 // phone or tablet alike. Decided once at boot: a device does not grow a mouse
@@ -96,6 +99,16 @@ pipeline.overlayScene.add(debrisPoints.points);
 const spacetimeGrid = new SpacetimeGrid();
 pipeline.overlayScene.add(spacetimeGrid.lines);
 
+// The light curve records one disruption at a time and repaints itself off the
+// frame loop; the loop only ever feeds it samples. Constructed without a
+// binding because it lives as long as the page does.
+const flareCurve = createFlareCurve();
+new LightCurveChart(lightCurveContainer, () =>
+  settings.lightCurveEnabled
+    ? { curve: flareCurve, showReference: settings.lightCurveFallbackReference }
+    : null,
+);
+
 /** Current effective primary r_s (animated during merger ringdown). */
 function currentRs(): number {
   return displayRs(world.binary, world.primaryRs);
@@ -129,8 +142,14 @@ const placement = new PlacementController(
   pipeline.overlayScene,
   rig.controls,
   (kind, pos) => {
-    if (kind === 'bh2') placeBinary(world, pos);
-    else placeBody(world, kind, pos, settings.tdeMode);
+    if (kind === 'bh2') {
+      placeBinary(world, pos);
+      return;
+    }
+    placeBody(world, kind, pos, settings.tdeMode);
+    // A new body starts a new flare. Sharing one time axis across two
+    // disruptions would put an origin on the chart that neither curve has.
+    resetFlare(flareCurve);
   },
 );
 let aimInfo = '';
@@ -175,6 +194,7 @@ function applyPreset(preset: Preset): void {
   endTour();
   placement.cancel();
   resetScene(world);
+  resetFlare(flareCurve);
   wave = restingWave();
 
   const { sky, ...look } = preset.look;
@@ -417,6 +437,23 @@ function frame(now: number): void {
     mergerNow ||= events.mergerNow;
     shredNow ||= events.shredNow;
     if (events.bodyEscaped) showTransientNote('remnant escaped with the mass it kept');
+    // The light curve's clock starts when the star comes apart and runs on the
+    // disruption clock, so its time axis is unaffected by the speed sliders and
+    // freezes when the sim is paused. The plotted curve still moves with
+    // tdeTimeCompression, because the disc's feeding glow decays on the
+    // simulation clock; that is why the compression at disruption is recorded
+    // and printed. The body can already be gone on the tick it shredded, hence
+    // the fallback to the current mode.
+    if (events.shredNow) {
+      startFlare(flareCurve, {
+        mode: world.body?.mode ?? settings.tdeMode,
+        timeCompression: settings.tdeTimeCompression,
+      });
+    }
+    recordFeeding(flareCurve, {
+      disruptionDt: FIXED_DT * settings.tdeTimeCompression,
+      boost: world.discBoost,
+    });
     // The wave rides the simulation clock, so it freezes when the sim does.
     wave = nextWaveState(
       wave,
