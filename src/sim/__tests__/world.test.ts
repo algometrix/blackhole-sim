@@ -6,10 +6,9 @@ import type { BodyPhase } from '../types';
 import { mulberry32 } from './rng';
 
 const DT = 1 / 60;
-// Both clocks stated explicitly: these tests count sim-seconds, so a default
+// Every clock stated explicitly: these tests count sim-seconds, so a default
 // compression would silently multiply every duration they assert.
-const GW_COMPRESSION = 40;
-const TDE_COMPRESSION = 1;
+const CLOCKS = { gw: 40, tde: 1, beacon: 1 };
 
 describe('world end-to-end (tuning harness)', () => {
   it('a placed planet is disrupted through the phases and consumed', () => {
@@ -23,7 +22,7 @@ describe('world end-to-end (tuning harness)', () => {
     const maxTicks = 400 * 60;
     while (world.body && tick < maxTicks) {
       if (!firstSeen.has(world.body.phase)) firstSeen.set(world.body.phase, tick);
-      stepWorld(world, DT, rng, GW_COMPRESSION, TDE_COMPRESSION);
+      stepWorld(world, DT, CLOCKS, rng);
       peakBoost = Math.max(peakBoost, world.discBoost);
       tick++;
     }
@@ -35,7 +34,7 @@ describe('world end-to-end (tuning harness)', () => {
     expect(peakBoost).toBeGreaterThan(0.3);
 
     // Debris drains and the boost decays after consumption.
-    for (let t = 0; t < 40; t += DT) stepWorld(world, DT, rng, GW_COMPRESSION, TDE_COMPRESSION);
+    for (let t = 0; t < 40; t += DT) stepWorld(world, DT, CLOCKS, rng);
     expect(world.debris.alive).toBe(0);
     expect(world.discBoost).toBeLessThan(0.05);
   });
@@ -54,7 +53,7 @@ describe('world end-to-end (tuning harness)', () => {
     let tick = 0;
     const maxTicks = 120 * 60;
     while (world.body && tick < maxTicks) {
-      const { shredNow } = stepWorld(world, DT, rng, GW_COMPRESSION, TDE_COMPRESSION);
+      const { shredNow } = stepWorld(world, DT, CLOCKS, rng);
       if (shredNow && world.body) {
         shredTick = tick;
         shredR = world.body.pos.length();

@@ -1,6 +1,6 @@
 /** UI-mutable settings: one plain object, read by sim and render each frame. */
 
-import { BINARY_TUNING, BODY_TUNING, GRID_TUNING, SKY_TUNING } from './config';
+import { BEACON_TUNING, BINARY_TUNING, BODY_TUNING, GRID_TUNING, SKY_TUNING } from './config';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
@@ -43,6 +43,10 @@ export interface Settings {
   gwTimeCompression: number;
   /** Wall-clock compression of a disruption and its debris (same trick). */
   tdeTimeCompression: number;
+  /** Wall-clock compression of the distant observer's clock for the beacon. */
+  beaconTimeCompression: number;
+  /** Exposure for the infalling probe; its true brightness spans six decades. */
+  beaconBrightness: number;
   soundEnabled: boolean;
   volume: number;
   sky: SkySettings;
@@ -68,6 +72,8 @@ export function defaultSettings(): Settings {
     tdeMode: 'cinematic',
     gwTimeCompression: BINARY_TUNING.timeCompression,
     tdeTimeCompression: BODY_TUNING.timeCompression,
+    beaconTimeCompression: BEACON_TUNING.timeCompression,
+    beaconBrightness: 1.6,
     soundEnabled: false,
     volume: 0.6,
     sky: {

@@ -19,7 +19,9 @@ export interface PanelActions {
   placePlanet(): void;
   placeStar(): void;
   placeBlackHole(): void;
+  placeBeacon(): void;
   clearBody(): void;
+  clearBeacon(): void;
   clearPaths(): void;
   onPhotonsToggled(enabled: boolean): void;
   onQualityChange(quality: QualityPreset): void;
@@ -117,8 +119,16 @@ export function buildPanel(
     'Arms placement, then click the disc plane. Its orbit decays by gravitational waves until the pair merges; both holes bend light.',
   );
   explain(
+    scene.add(actions, 'placeBeacon').name('Beacon (freezes at the horizon)'),
+    'Arms placement, then click the disc plane. A probe is released from rest above that point and falls straight in. You watch it redden, dim and stall just outside the shadow. It never finishes falling, for you. On its own clock it crosses in seconds, and the readout shows both clocks side by side.',
+  );
+  explain(
     scene.add(actions, 'clearBody').name('Remove body'),
     'Removes the body immediately. Debris already shed keeps draining into the disc.',
+  );
+  explain(
+    scene.add(actions, 'clearBeacon').name('Remove beacon'),
+    'Takes the probe out of the scene. Otherwise it stays forever: never finishing the fall is the whole point.',
   );
   explain(
     scene
@@ -147,6 +157,10 @@ export function buildPanel(
     playback.add(settings, 'tdeTimeCompression', 1, 60, 1).name('Disruption speed'),
     'Wall-clock compression of a disruption and its debris. Same trick as the inspiral clock: the orbits are exact, the clock is fast, at 1:1 the debris would take ten minutes to complete one lap around the hole.',
   );
+  explain(
+    playback.add(settings, 'beaconTimeCompression', 1, 20, 1).name('Beacon fall speed'),
+    "Wall-clock compression of the distant observer's clock for the probe. Same trick as the inspiral and disruption clocks: scaling that clock uniformly speeds up the fall and the stall together, so the shape of the freeze is untouched. At 1:1 a drop from 7 rₛ takes about forty seconds to fade out.",
+  );
   addResetButton(
     playback,
     () => {
@@ -154,8 +168,9 @@ export function buildPanel(
       settings.timeScale = shipped.timeScale;
       settings.gwTimeCompression = shipped.gwTimeCompression;
       settings.tdeTimeCompression = shipped.tdeTimeCompression;
+      settings.beaconTimeCompression = shipped.beaconTimeCompression;
     },
-    'Back to running, speed ×1, and the default inspiral and disruption clocks.',
+    'Back to running, speed ×1, and the default inspiral, disruption and beacon clocks.',
   );
 
   const camera = gui.addFolder('Camera');
@@ -228,6 +243,20 @@ export function buildPanel(
     'Jet off, default brightness.',
   );
   jet.close();
+
+  const beacon = gui.addFolder('Infalling beacon');
+  explain(
+    beacon.add(settings, 'beaconBrightness', 0.2, 20, 0.1).name('Brightness'),
+    'Exposure for the probe. Its real brightness falls as the cube of the redshift, nine decades between release and the point where it stops moving, so no single exposure can show the whole fall. Turn this up to follow it further in.',
+  );
+  addResetButton(
+    beacon,
+    () => {
+      settings.beaconBrightness = shipped.beaconBrightness;
+    },
+    'Default beacon exposure.',
+  );
+  beacon.close();
 
   // Sky sliders re-bake a cubemap, so they fire on release, not on drag.
   const sky = gui.addFolder('Deep sky');
