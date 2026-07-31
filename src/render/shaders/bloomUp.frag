@@ -16,5 +16,9 @@ void main() {
   sum += texture2D(tSrc, uv + vec2(uHalfPixel.x, -uHalfPixel.y)).rgb * 2.0;
   sum += texture2D(tSrc, uv + vec2(0.0, -uHalfPixel.y * 2.0)).rgb;
   sum += texture2D(tSrc, uv + vec2(-uHalfPixel.x, -uHalfPixel.y)).rgb * 2.0;
-  gl_FragColor = vec4(sum / 12.0 + texture2D(tAdd, uv).rgb, 1.0);
+  // Blend the coarser level into this one instead of summing it: with six
+  // levels a straight sum multiplies the total bloom energy by the level count
+  // and washes the frame out. A lerp keeps the energy of a single level while
+  // still inheriting the wide, smooth tail that hides the kernel's shape.
+  gl_FragColor = vec4(mix(texture2D(tAdd, uv).rgb, sum / 12.0, 0.6), 1.0);
 }

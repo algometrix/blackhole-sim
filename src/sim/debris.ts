@@ -16,6 +16,7 @@
  */
 import { DEBRIS_TUNING } from '../config';
 import { vCircular, type GravityEnv } from './gravity';
+import { orbitOf, velocityOnOrbit } from './orbit';
 import { bodyRadius } from './body';
 import type { Body, DebrisPool } from './types';
 
@@ -26,6 +27,9 @@ export type Rng = () => number;
 const BALLISTIC_CULL_RADIUS = 60;
 
 const DEFAULT_ENV: GravityEnv = { rs: 1, bh2: null };
+
+/** Scratch for the spawn loop, which must not allocate per particle. */
+const launchVelocity = { x: 0, y: 0, z: 0 };
 
 export function createPool(capacity: number): DebrisPool {
   return {
@@ -98,7 +102,12 @@ export function spawnFromBody(
   const tip = 0.9 * radius * body.stretch;
   const vCirc = vCircular(Math.max(r, 1.5 * rs), rs);
   const cinematicKick = spawnKick * vCirc;
-  const jitter = spawnJitter * radius;
+
+  // Every particle is launched onto the body's own orbit at its own radius.
+  const orbit = orbitOf(body.pos, body.vel, rs);
+  // Jitter across the strand, which is thin: a stretched body conserves
+  // volume, so its lateral radius shrinks as 1/sqrt(stretch).
+  const jitter = (spawnJitter * radius) / Math.sqrt(body.stretch);
 
   let spawned = 0;
   for (let n = 0; n < count; n++) {
@@ -109,19 +118,38 @@ export function spawnFromBody(
     // Alternate tips in realistic mode; cinematic always uses the near tip.
     const nearTip = energySpread === 0 || n % 2 === 0;
     const side = nearTip ? 1 : -1;
-    // Radial kick: cinematic = fixed nudge toward the hole; realistic =
-    // energy spread, inward at the near tip, outward at the far tip.
-    const kick =
-      energySpread === 0
-        ? cinematicKick
-        : side * energySpread * vCirc * (0.3 + Math.abs(gaussian(rng)));
+    // Material peels off all along the outer half of the strand, not from a
+    // single point at its tip: launching from one point makes particles appear
+    // out of nowhere a body-length away instead of streaming off the ribbon.
+    const alongStrand = 0.45 + 0.55 * rng();
+    // Cinematic mode: a fixed nudge toward the hole, aimed radially.
+    //
+    // Realistic mode: the tidal energy spread, aimed radially and rising
+    // smoothly along the strand. Radial matters, a radial kick leaves the
+    // angular momentum untouched, so the debris keeps the star's pericenter
+    // and swings back out. Kicking along the direction of motion instead
+    // strips angular momentum too, and most of the bound half falls straight
+    // down the hole instead of forming a returning stream.
+    //
+    // While the star is falling inward (v·r̂ < 0), an outward kick cancels
+    // part of that infall and *lowers* the specific energy: the near tip ends
+    // up bound hardest and returns first, the far tip gains energy and leaves.
+    // `boundFlag` then reads the energy back out to split the two populations.
+    const spread = energySpread * vCirc * alongStrand * (0.85 + 0.3 * rng());
+    const kx = energySpread === 0 ? dx * cinematicKick : -side * dx * spread;
+    const ky = energySpread === 0 ? dy * cinematicKick : -side * dy * spread;
+    const kz = energySpread === 0 ? dz * cinematicKick : -side * dz * spread;
 
-    const px = bp.x + side * dx * tip + gaussian(rng) * jitter;
-    const py = bp.y + side * dy * tip + gaussian(rng) * jitter;
-    const pz = bp.z + side * dz * tip + gaussian(rng) * jitter;
-    const vx = body.vel.x + dx * kick + gaussian(rng) * 0.01;
-    const vy = body.vel.y + dy * kick + gaussian(rng) * 0.01;
-    const vz = body.vel.z + dz * kick + gaussian(rng) * 0.01;
+    const along = tip * alongStrand;
+    const px = bp.x + side * dx * along + gaussian(rng) * jitter;
+    const py = bp.y + side * dy * along + gaussian(rng) * jitter;
+    const pz = bp.z + side * dz * along + gaussian(rng) * jitter;
+
+    const rp = Math.max(Math.hypot(px, py, pz), 1.05 * rs);
+    velocityOnOrbit(orbit, px / rp, py / rp, pz / rp, rp, rs, launchVelocity);
+    const vx = launchVelocity.x + kx + gaussian(rng) * 0.01;
+    const vy = launchVelocity.y + ky + gaussian(rng) * 0.01;
+    const vz = launchVelocity.z + kz + gaussian(rng) * 0.01;
     pool.pos[i3] = px;
     pool.pos[i3 + 1] = py;
     pool.pos[i3 + 2] = pz;
@@ -184,7 +212,7 @@ export interface PoolStepResult {
  * Managed particles get PW gravity, inspiral drag, disc-plane settling, an
  * absorption fade at the inner edge (absorbRadius * rs), and a hard kill at
  * killRadius * rs. Ballistic particles get gravity only and die far out
- * (r > 60), at max age, or inside the capture radius — never absorbed.
+ * (r > 60), at max age, or inside the capture radius, never absorbed.
  * Any particle that strays inside 1.05x the secondary hole's Schwarzschild
  * radius is swallowed by it: killed with no disc credit.
  */
@@ -194,7 +222,8 @@ export function updatePool(
   heatFloor: number,
   env: GravityEnv = DEFAULT_ENV,
 ): PoolStepResult {
-  const { drag, planeSpring, planeDamping, absorbFadeTime, maxAge } = DEBRIS_TUNING;
+  const { drag, planeSpring, planeDamping, absorbFadeTime, maxAge, circularizedSpeedFactor } =
+    DEBRIS_TUNING;
   const rs = env.rs;
   const bh2 = env.bh2;
   const bh2CaptureR = bh2 ? 1.05 * 2 * bh2.m : 0;
@@ -255,7 +284,26 @@ export function updatePool(
 
     pool.age[i] = pool.age[i]! + dt;
     pool.heat[i] = heatAt(r, heatFloor);
-    if (managed && r < absorbRadius) pool.life[i] = pool.life[i]! - dt / absorbFadeTime;
+
+    // Debris joins the disc when it *circularizes*, not the first time it
+    // crosses the inner edge. A freshly torn stream is violently eccentric: it
+    // whips through pericenter and straight back out, and that return swing is
+    // the wide ribbon wrapping the hole in every observed disruption image.
+    // Swallowing everything that dipped inside the ISCO ate the ribbon before
+    // it could form.
+    //
+    // The test is speed, not radial motion: radial velocity passes through
+    // zero at every pericenter no matter how eccentric the orbit is, while a
+    // particle whipping through pericenter is moving far faster than the local
+    // circular speed. Only material that has shed that excess, by drag, over
+    // several passes, is taken.
+    if (managed && r < absorbRadius) {
+      const circular = vCircular(Math.max(r, 1.5 * rs), rs);
+      const speedSq = vx * vx + vy * vy + vz * vz;
+      if (speedSq < circularizedSpeedFactor * circular * circular) {
+        pool.life[i] = pool.life[i]! - dt / absorbFadeTime;
+      }
+    }
 
     const dead = managed
       ? captured || r < killRadius || pool.life[i]! <= 0 || pool.age[i]! > maxAge

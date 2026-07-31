@@ -1,7 +1,7 @@
 /**
  * Pure tidal-disruption rules: the phase ratchet, the stretch profile, and
  * the mass-loss rate. Thresholds are parameters because they depend on the
- * body's mode (cinematic vs realistic TDE); no state — body.ts applies
+ * body's mode (cinematic vs realistic TDE); no state, body.ts applies
  * these each tick.
  */
 import { BODY_TUNING } from '../config';

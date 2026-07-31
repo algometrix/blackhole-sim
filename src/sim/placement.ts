@@ -1,6 +1,6 @@
 /**
  * Pure placement math: clamp a requested spawn point onto the allowed ring
- * in the disc plane, and build the initial orbital velocity — sub-circular
+ * in the disc plane, and build the initial orbital velocity, sub-circular
  * prograde for the cinematic spiral, zero-energy parabolic for a realistic
  * one-pass tidal disruption.
  */

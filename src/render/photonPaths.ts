@@ -1,6 +1,6 @@
 /**
  * Photon trajectory rendering: CPU-integrated geodesics drawn as glowing
- * tubes. Paths are true spatial curves (deliberately not re-lensed — the
+ * tubes. Paths are true spatial curves (deliberately not re-lensed, the
  * point is to show the actual trajectory geometry, not its lensed image),
  * occluded by the horizon via the shared mask.
  */
@@ -90,7 +90,7 @@ export class PhotonPathManager {
 
   /**
    * Launch a horizontal fan of `count` rays around `baseDir` (spread in
-   * degrees, rotated about the camera's up axis) — aiming near the shadow
+   * degrees, rotated about the camera's up axis), aiming near the shadow
    * edge makes the capture/escape bifurcation at b_crit visible.
    */
   launchFan(

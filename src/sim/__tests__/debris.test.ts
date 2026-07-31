@@ -21,6 +21,7 @@ function sheddingBody(): Body {
     rShed: 4.5,
     lossBase: 0.08,
     energySpread: 0,
+    drag: 0.015,
   };
 }
 
@@ -94,12 +95,15 @@ describe('debris pool', () => {
     pool.life[0] = 1;
     pool.flags[0] = 1;
 
-    let r = 5;
-    for (let t = 0; t < 20 && pool.alive > 0; t += DT) {
+    // Drag is deliberately gentle because a debris orbit has to survive several
+    // laps, so the inward spiral shows over hundreds of seconds, not tens.
+    const startRadius = Math.hypot(5, 1.5, 0);
+    let r = startRadius;
+    for (let t = 0; t < 300 && pool.alive > 0; t += DT) {
       updatePool(pool, DT, 0);
       r = Math.hypot(pool.pos[0]!, pool.pos[1]!, pool.pos[2]!);
     }
-    expect(r).toBeLessThan(5);
+    expect(r).toBeLessThan(startRadius);
     if (pool.alive > 0) expect(Math.abs(pool.pos[1]!)).toBeLessThan(0.3);
   });
 

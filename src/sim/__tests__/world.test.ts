@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
+import { TDE_TUNING } from '../../config';
 import { createWorld, placeBody, stepWorld } from '../world';
 import type { BodyPhase } from '../types';
 import { mulberry32 } from './rng';
 
 const DT = 1 / 60;
+// Both clocks stated explicitly: these tests count sim-seconds, so a default
+// compression would silently multiply every duration they assert.
+const GW_COMPRESSION = 40;
+const TDE_COMPRESSION = 1;
 
 describe('world end-to-end (tuning harness)', () => {
   it('a placed planet is disrupted through the phases and consumed', () => {
@@ -18,7 +23,7 @@ describe('world end-to-end (tuning harness)', () => {
     const maxTicks = 400 * 60;
     while (world.body && tick < maxTicks) {
       if (!firstSeen.has(world.body.phase)) firstSeen.set(world.body.phase, tick);
-      stepWorld(world, DT, rng);
+      stepWorld(world, DT, rng, GW_COMPRESSION, TDE_COMPRESSION);
       peakBoost = Math.max(peakBoost, world.discBoost);
       tick++;
     }
@@ -30,7 +35,7 @@ describe('world end-to-end (tuning harness)', () => {
     expect(peakBoost).toBeGreaterThan(0.3);
 
     // Debris drains and the boost decays after consumption.
-    for (let t = 0; t < 40; t += DT) stepWorld(world, DT, rng);
+    for (let t = 0; t < 40; t += DT) stepWorld(world, DT, rng, GW_COMPRESSION, TDE_COMPRESSION);
     expect(world.debris.alive).toBe(0);
     expect(world.discBoost).toBeLessThan(0.05);
   });
@@ -49,7 +54,7 @@ describe('world end-to-end (tuning harness)', () => {
     let tick = 0;
     const maxTicks = 120 * 60;
     while (world.body && tick < maxTicks) {
-      const { shredNow } = stepWorld(world, DT, rng);
+      const { shredNow } = stepWorld(world, DT, rng, GW_COMPRESSION, TDE_COMPRESSION);
       if (shredNow && world.body) {
         shredTick = tick;
         shredR = world.body.pos.length();
@@ -62,9 +67,9 @@ describe('world end-to-end (tuning harness)', () => {
     }
 
     expect(shredTick).toBeGreaterThan(0);
-    // Shredding starts near pericenter, at the star's tidal radius (4.0).
+    // Shredding starts as the star crosses its own tidal radius on the way in.
     expect(shredR).toBeGreaterThan(0);
-    expect(shredR).toBeLessThan(4.1);
+    expect(shredR).toBeLessThan(TDE_TUNING.starShedRadius * 1.05);
     expect(sawBound).toBe(true);
     expect(sawUnbound).toBe(true);
     // The body is gone (consumed or escaped) within 120 sim-seconds.
