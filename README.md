@@ -144,6 +144,10 @@ Every control carries a hover description, and each folder has a reset button.
 
 ## The physics
 
+New to any of this? [**docs/THEORY.md**](docs/THEORY.md) derives every equation
+below from scratch, starting at `F = ma` and ending at Flamm's paraboloid, with
+diagrams and no assumed background. The section here is the short version.
+
 Geometric units throughout: $G = c = 1$, lengths in Schwarzschild radii ($r_s = 2M = 1$, so $M = \tfrac{1}{2}$). The disc lies in the equatorial plane.
 
 ### Light: null geodesics (exact)

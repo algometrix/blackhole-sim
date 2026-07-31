@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 366" width="620" height="366" font-family="system-ui, sans-serif" font-size="13">
+  <title>Flamm's paraboloid: the embedding diagram of a Schwarzschild spatial slice</title>
+  <g fill="none" stroke="#58a6ff" stroke-width="1.1" opacity="0.85">
+    <ellipse cx="300" cy="86.0" rx="240.0" ry="48.0"/>
+    <ellipse cx="300" cy="125.0" rx="160.0" ry="32.0"/>
+    <ellipse cx="300" cy="159.0" rx="104.0" ry="20.8"/>
+    <ellipse cx="300" cy="186.6" rx="68.0" ry="13.6"/>
+    <ellipse cx="300" cy="210.0" rx="44.0" ry="8.8"/>
+    <ellipse cx="300" cy="230.6" rx="28.0" ry="5.6"/>
+    <ellipse cx="300" cy="249.0" rx="17.6" ry="3.5"/>
+    <ellipse cx="300" cy="263.8" rx="12.0" ry="2.4"/>
+    <ellipse cx="300" cy="290.6" rx="8.0" ry="1.6"/>
+  </g>
+  <g fill="none" stroke="#58a6ff" stroke-width="1" opacity="0.5">
+    <path d="M 60.0 86.0 L 140.0 125.0 L 196.0 159.0 L 232.0 186.6 L 256.0 210.0 L 272.0 230.6 L 282.4 249.0 L 288.0 263.8 L 292.0 290.6"/>
+    <path d="M 540.0 86.0 L 460.0 125.0 L 404.0 159.0 L 368.0 186.6 L 344.0 210.0 L 328.0 230.6 L 317.6 249.0 L 312.0 263.8 L 308.0 290.6"/>
+  </g>
+  <text x="300" y="26" fill="#7ee787" text-anchor="middle">z(r) = 2 sqrt( r_s (r - r_s) )</text>
+  <text x="300" y="319" fill="#8b949e" text-anchor="middle">the throat, r = r_s</text>
+  <text x="12" y="140" fill="#8b949e">Far out the sheet is</text>
+  <text x="12" y="160" fill="#8b949e">almost flat: ordinary</text>
+  <text x="12" y="180" fill="#8b949e">space, ordinary rules.</text>
+  <text x="608" y="228" fill="#8b949e" text-anchor="end">Close in it plunges: one step</text>
+  <text x="608" y="248" fill="#8b949e" text-anchor="end">outward covers far more</text>
+  <text x="608" y="268" fill="#8b949e" text-anchor="end">distance than the map says.</text>
+</svg>
