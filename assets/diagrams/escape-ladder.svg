@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 300" width="660" height="300" font-family="system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="elArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
+    </marker>
+  </defs>
+
+  <line x1="60" y1="250" x2="620" y2="250" stroke="#8b949e" stroke-width="1.5"/>
+  <text x="340" y="278" fill="#8b949e" text-anchor="middle">squeeze the same mass into a smaller and smaller ball</text>
+
+  <!-- three balls, shrinking, with escape speed arrows growing -->
+  <circle cx="140" cy="200" r="42" fill="#8b949e" opacity="0.5"/>
+  <line x1="140" y1="150" x2="140" y2="112" stroke="#7ee787" stroke-width="3" marker-end="url(#elArrow)"/>
+  <text x="140" y="98" fill="#7ee787" text-anchor="middle">11 km/s</text>
+  <text x="140" y="88" fill="#7ee787" text-anchor="middle" font-size="0"> </text>
+  <text x="140" y="80" fill="#8b949e" text-anchor="middle" font-size="12">Earth</text>
+
+  <circle cx="350" cy="216" r="26" fill="#8b949e" opacity="0.65"/>
+  <line x1="350" y1="182" x2="350" y2="104" stroke="#f0c674" stroke-width="3" marker-end="url(#elArrow)"/>
+  <text x="350" y="90" fill="#f0c674" text-anchor="middle">half light speed</text>
+  <text x="350" y="72" fill="#8b949e" text-anchor="middle" font-size="12">a neutron star</text>
+
+  <circle cx="560" cy="238" r="11" fill="#000" stroke="#8b949e"/>
+  <line x1="560" y1="220" x2="560" y2="96" stroke="#f78166" stroke-width="3" marker-end="url(#elArrow)"/>
+  <text x="560" y="82" fill="#f78166" text-anchor="middle">light speed</text>
+  <text x="560" y="64" fill="#8b949e" text-anchor="middle" font-size="12">a black hole</text>
+
+  <text x="60" y="34" fill="#8b949e">Escape speed depends on how close you can get to the mass.</text>
+  <text x="60" y="54" fill="#7ee787">Squeeze it small enough and even light is too slow.</text>
+</svg>

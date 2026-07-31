@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 300" width="660" height="300" font-family="system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="tideArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f78166"/>
+    </marker>
+  </defs>
+
+  <circle cx="70" cy="150" r="30" fill="#000" stroke="#8b949e"/>
+  <text x="70" y="205" fill="#8b949e" text-anchor="middle">black hole</text>
+
+  <!-- the body, near side and far side -->
+  <ellipse cx="380" cy="150" rx="52" ry="52" fill="#f0c674" opacity="0.85"/>
+  <text x="380" y="232" fill="#8b949e" text-anchor="middle">a star, still round</text>
+
+  <line x1="328" y1="150" x2="248" y2="150" stroke="#f78166" stroke-width="4" marker-end="url(#tideArrow)"/>
+  <text x="246" y="140" fill="#f78166" text-anchor="end">near side: strong pull</text>
+
+  <line x1="432" y1="150" x2="384" y2="150" stroke="#f78166" stroke-width="2" marker-end="url(#tideArrow)"/>
+  <text x="446" y="150" fill="#f78166">far side: weaker pull</text>
+
+  <text x="440" y="46" fill="#8b949e">Gravity falls off as 1/r², so the</text>
+  <text x="440" y="66" fill="#8b949e">near side is pulled harder than</text>
+  <text x="440" y="86" fill="#8b949e">the far side. The difference is</text>
+  <text x="440" y="106" fill="#7ee787">the tide, and it stretches.</text>
+
+  <!-- stretched version -->
+  <ellipse cx="380" cy="272" rx="108" ry="18" fill="#f0c674" opacity="0.85"/>
+  <text x="380" y="296" fill="#8b949e" text-anchor="middle" font-size="12">closer in: the tide wins over the star's own gravity</text>
+</svg>

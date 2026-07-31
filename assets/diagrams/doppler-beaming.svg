@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 320" width="660" height="320" font-family="system-ui, sans-serif" font-size="13">
+  <title>Why one side of an accretion disc is brighter than the other</title>
+  <defs>
+    <marker id="obs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
+    </marker>
+    <marker id="spin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
+    </marker>
+  </defs>
+
+  <text x="330" y="26" fill="#8b949e" text-anchor="middle">The gas orbits at a large fraction of light speed.</text>
+  <text x="330" y="46" fill="#8b949e" text-anchor="middle">The half sweeping toward you has its light packed together and aimed at you.</text>
+
+  <!-- the disc, seen at a shallow angle -->
+  <ellipse cx="330" cy="160" rx="196" ry="56" fill="none" stroke="#8b949e" stroke-width="1" stroke-dasharray="4 5"/>
+
+  <!-- left half sweeps toward the viewer: bright -->
+  <path d="M 330 216 A 196 56 0 0 1 330 104" fill="none" stroke="#f0b429" stroke-width="10" stroke-linecap="round"/>
+  <!-- right half sweeps away: dim -->
+  <path d="M 330 104 A 196 56 0 0 1 330 216" fill="none" stroke="#8a6a3a" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
+
+  <circle cx="330" cy="160" r="27" fill="#000" stroke="#8b949e" stroke-width="1"/>
+
+  <text x="120" y="92" fill="#f0b429" text-anchor="middle">sweeping toward you</text>
+  <text x="120" y="110" fill="#f0b429" text-anchor="middle" font-size="12">bright, and blue-shifted</text>
+
+  <text x="546" y="222" fill="#8a6a3a" text-anchor="middle">sweeping away</text>
+  <text x="546" y="240" fill="#f78166" text-anchor="middle" font-size="12">dim, and red-shifted</text>
+
+  <!-- rotation sense, so the left/right split is justified rather than asserted -->
+  <path d="M 300 122 A 60 22 0 0 0 300 198" fill="none" stroke="#8b949e" stroke-width="1.2" marker-end="url(#spin)"/>
+  <text x="286" y="160" fill="#8b949e" text-anchor="end" font-size="12">spin</text>
+
+  <line x1="330" y1="300" x2="330" y2="228" stroke="#8b949e" stroke-width="1.5" marker-end="url(#obs)"/>
+  <text x="330" y="316" fill="#8b949e" text-anchor="middle">you are here, looking along this line</text>
+</svg>
