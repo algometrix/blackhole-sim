@@ -23,7 +23,7 @@ import { nextWaveState, restingWave } from './sim/gravitationalWave';
 import { clearBody, createWorld, placeBinary, placeBody, resetScene, stepWorld } from './sim/world';
 import type { Body } from './sim/types';
 import { CinematicMode, isTypingIntoControl } from './ui/chrome';
-import { isMobile, mobileRenderBudget } from './ui/device';
+import { touchRenderBudget, usesTouchUi } from './ui/device';
 import { buildPanel } from './ui/panel';
 import type { Preset } from './ui/presets';
 import { PlacementController } from './ui/placement';
@@ -60,13 +60,13 @@ const hud = requireElement('hud');
 const toast = requireElement('toast');
 const chromeToggle = requireElement('chrome-toggle');
 
-// A finger-driven, small screen gets a different layout and a smaller render
-// budget. Decided once at boot: a phone does not become a desktop mid-session,
-// and re-laying-out the panel on every orientation change would be worse than
-// the sizes being slightly off in landscape.
-const mobile = isMobile();
-if (mobile) document.body.classList.add('touch-ui');
-const budget = mobileRenderBudget();
+// A finger-driven device gets the touch layout and a smaller render budget,
+// phone or tablet alike. Decided once at boot: a device does not grow a mouse
+// mid-session, and re-laying-out the panel on every orientation change would
+// be worse than the sizes being slightly off in landscape.
+const touchUi = usesTouchUi();
+if (touchUi) document.body.classList.add('touch-ui');
+const budget = touchRenderBudget();
 
 const renderer = new THREE.WebGLRenderer({
   antialias: false,
@@ -76,14 +76,14 @@ if (!renderer.capabilities.isWebGL2) {
   hud.textContent = 'This visualizer needs WebGL2, which this browser does not provide.';
   throw new Error('WebGL2 required');
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, mobile ? budget.pixelRatio : 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, touchUi ? budget.pixelRatio : 2));
 app.appendChild(renderer.domElement);
 
 const settings = defaultSettings();
-if (mobile) settings.quality = 'low';
+if (touchUi) settings.quality = 'low';
 const world = createWorld();
 
-const starfield = new Starfield(renderer, settings.sky, mobile ? budget.skyFaceSize : undefined);
+const starfield = new Starfield(renderer, settings.sky, touchUi ? budget.skyFaceSize : undefined);
 const rig = new CameraRig(window.innerWidth / window.innerHeight, renderer.domElement);
 const bhPass = new BlackHolePass(starfield.texture, settings.quality);
 const pipeline = new RenderPipeline(renderer, rig.camera, bhPass, settings.quality);
@@ -148,7 +148,7 @@ const aiming = new AimingController(
 const cinematic = new CinematicMode(
   document.body,
   toast,
-  mobile ? 'tap the button to bring them back' : 'press H for the controls',
+  touchUi ? 'tap the button to bring them back' : 'press H for the controls',
 );
 chromeToggle.addEventListener('click', () => {
   cinematic.toggle();
@@ -246,7 +246,7 @@ const panel = buildPanel(
       rebakeSky();
     },
   },
-  { debug: new URLSearchParams(window.location.search).has('debug'), compact: mobile },
+  { debug: new URLSearchParams(window.location.search).has('debug'), compact: touchUi },
 );
 audio.setVolume(settings.volume);
 
